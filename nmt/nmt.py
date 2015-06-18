@@ -16,7 +16,7 @@ import time
 
 from scipy import optimize, stats
 from collections import OrderedDict
-from sklearn.cross_validation import KFold
+#from sklearn.cross_validation import KFold
 
 import wmt14enfr
 import iwslt14zhen
