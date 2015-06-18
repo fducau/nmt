@@ -23,6 +23,7 @@ import iwslt14zhen
 import openmt15zhen
 import trans_enhi
 import stan
+import small_europarl_enfr
 
 profile = False
 
@@ -32,6 +33,7 @@ datasets = {'wmt14enfr': (wmt14enfr.load_data, wmt14enfr.prepare_data),
             'openmt15zhen': (openmt15zhen.load_data, openmt15zhen.prepare_data),
             'trans_enhi': (trans_enhi.load_data, trans_enhi.prepare_data),
             'stan': (stan.load_data, stan.prepare_data),
+            'small_europarl_enfr': (small_europarl_enfr.load_data, small_europarl_enfr.prepare_data),
             }
 
 def get_dataset(name):
