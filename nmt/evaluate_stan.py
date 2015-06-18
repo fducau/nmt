@@ -26,8 +26,8 @@ def main(job_id, params):
                                         saveFreq=500,
                                         sampleFreq=10,
                                         dataset='stan',
-                                        dictionary='./stan/vocab_and_data_sub_europarl/vocab_sub_europarl.fr.pkl',
-                                        dictionary_src='./stan/vocab_and_data_sub_europarl/vocab_sub_europarl.en.pkl',
+                                        dictionary='../../data/vocab_and_data_sub_europarl/vocab_sub_europarl.fr.pkl',
+                                        dictionary_src='../../data/vocab_and_data_sub_europarl/vocab_sub_europarl.en.pkl',
                                         use_dropout=False)
     return validerr
 
