@@ -1744,8 +1744,12 @@ def train(dim_word=100, # word vector dimensionality
                     params = best_p
                 else:
                     params = unzip(tparams)
-                numpy.savez(saveto, history_errs=history_errs, **params)
-                pkl.dump(model_options, open('%s.pkl'%saveto, 'wb'))
+
+                saveto_list = saveto.split('/')
+                saveto_list[-1] = 'epoch' + str(eidx) + '_' + saveto_list[-1]
+                saveName = '/'.join(saveto_list)
+                numpy.savez(saveName, history_errs=history_errs, **params)
+                pkl.dump(model_options, open('%s.pkl'%saveName, 'wb'))
                 print 'Done'
 
             if numpy.mod(uidx, sampleFreq) == 0:
