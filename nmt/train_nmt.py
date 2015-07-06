@@ -42,6 +42,8 @@ elif dataset == "europarl":
     dirModelName = "model_gru_europarl_enfr_" + "_".join([str(dim_word), str(dim_model)])
 elif dataset == "small_europarl_enfr":
     dirModelName = "model_gru_small_europarl_enfr_" + "_".join([str(dim_word), str(dim_model)])
+elif dataset == "wmt_all_enfr":
+    dirModelName = "model_gru_wmt_all_enfr_" + "_".join([str(dim_word), str(dim_model)])
 elif dataset == "de_en":
     dirModelName = "model_gru_statmt_deen_" + "_".join([str(dim_word), str(dim_model)])
 else:
@@ -64,8 +66,8 @@ if dataset == "sub_europarl":
     n_words_src = 1025
     n_words_trg = 1153
     dataset = 'stan'
-    dictionary_trg='../../data/vocab_and_data_sub_europarl/vocab_sub_europarl.fr.pkl'
-    dictionary_src='../../data/vocab_and_data_sub_europarl/vocab_sub_europarl.en.pkl'
+    dictionary_trg='../../data/vocab_and_data_wmt_all_enfr/vocab_sub_europarl.fr.pkl'
+    dictionary_src='../../data/vocab_and_data_wmt_all_enfrx/vocab_sub_europarl.en.pkl'
 
     batch_size = 64
     nb_batch_epoch = 4
@@ -90,6 +92,16 @@ elif dataset == "small_europarl_enfr":
     batch_size = 64
     nb_batch_epoch = np.ceil(sizeTrainset/batch_size)
     
+elif dataset == "wmt_all_enfr":
+    n_words_src=30000
+    n_words_trg=30000
+    dictionary_trg='../../data/vocab_and_data_wmt_all_enfr/vocab_wmt_all.fr.pkl'
+    dictionary_src='../../data/vocab_and_data_wmt_all_enfr/vocab_wmt_all.en.pkl'
+
+    sizeTrainset = 12075604.0
+    batch_size = 64
+    nb_batch_epoch = np.ceil(sizeTrainset/batch_size)
+
 elif dataset == "de_en":
     n_words_src=30000
     n_words_trg=30000
