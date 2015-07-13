@@ -1599,7 +1599,8 @@ def train(dim_word=100, # word vector dimensionality
           dictionary=None, # word dictionary
           dictionary_src=None, # word dictionary
           use_dropout=False,
-          reload_=False):
+          reload_=False,
+          clip_c=0.):
 
     # Model options
     model_options = locals().copy()
@@ -1684,6 +1685,18 @@ def train(dim_word=100, # word vector dimensionality
     print 'Building f_grad...',
     f_grad = theano.function(inps, grads, profile=profile)
     print 'Done'
+    
+    #Cliping gradients
+    if clip_c > 0.:
+        g2 = 0.
+        for g in grads:
+            g2 += (g**2).sum()
+        new_grads = []
+        for g in grads:
+            new_grads.append(tensor.switch(g2 > (clip_c**2),
+                                           g / tensor.sqrt(g2) * clip_c,
+                                           g))
+        grads = new_grads
 
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
@@ -1813,6 +1826,7 @@ def train(dim_word=100, # word vector dimensionality
                 #train_err = 1. - numpy.float32(train_err) / train[0].shape[0]
 
                 #train_err = pred_error(f_pred, prepare_data, train, kf)
+                #train_err = pred_probs(f_log_probs, prepare_data, model_options, train).mean()
                 if valid != None:
                     valid_err = pred_probs(f_log_probs, prepare_data, model_options, valid).mean()
                 if test != None:
