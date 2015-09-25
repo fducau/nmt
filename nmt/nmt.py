@@ -92,6 +92,7 @@ layers = {'ff': ('param_init_fflayer', 'fflayer'),
           'lstm_cond': ('param_init_lstm_cond', 'lstm_cond_layer'),
           'gru': ('param_init_gru', 'gru_layer'),
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
+          'gru_bow_cond': ('param_init_gru_cond', 'gru_bow_cond_layer'),
           'gru_cond_simple': ('param_init_gru_cond_simple', 'gru_cond_simple_layer'),
           'gru_hiero': ('param_init_gru_hiero', 'gru_hiero_layer'),
           'rnn': ('param_init_rnn', 'rnn_layer'),
@@ -510,6 +511,38 @@ def param_init_gru(options, params, prefix='gru', nin=None, dim=None, hiero=Fals
 
     return params
 
+def param_init_gru_nonlin(options, params, prefix='gru', nin=None, dim=None, hiero=False):
+    if nin == None:
+        nin = options['dim_proj']
+    if dim == None:
+        dim = options['dim_proj']
+    if not hiero:
+        W = numpy.concatenate([norm_weight(nin,dim),
+                               norm_weight(nin,dim)], axis=1)
+        params[_p(prefix,'W')] = W
+        params[_p(prefix,'b')] = numpy.zeros((2 * dim,)).astype('float32')
+    U = numpy.concatenate([ortho_weight(dim),
+                           ortho_weight(dim)], axis=1)
+    params[_p(prefix,'U')] = U
+
+    Wx = norm_weight(nin, dim)
+    params[_p(prefix,'Wx')] = Wx
+    Ux = ortho_weight(dim)
+    params[_p(prefix,'Ux')] = Ux
+    params[_p(prefix,'bx')] = numpy.zeros((dim,)).astype('float32')
+
+    
+    U_nl = numpy.concatenate([ortho_weight(dim),
+                              ortho_weight(dim)], axis=1)
+    params[_p(prefix,'U_nl')] = U_nl
+    params[_p(prefix,'b_nl')] = numpy.zeros((2 * dim,)).astype('float32')
+
+    Ux_nl = ortho_weight(dim)
+    params[_p(prefix,'Ux_nl')] = Ux_nl
+    params[_p(prefix,'bx_nl')] = numpy.zeros((dim,)).astype('float32')
+    
+    return params
+
 def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
     nsteps = state_below.shape[0]
     if state_below.ndim == 3:
@@ -575,7 +608,14 @@ def param_init_gru_cond_simple(options, params, prefix='gru_cond', nin=None, dim
     if dimctx == None:
         dimctx = options['dim']
 
-    params = param_init_gru(options, params, prefix, nin=nin, dim=dim)
+
+    if options['bow_source_minus_target']:
+        coef_in = 2
+    else:
+        coef_in = 1
+
+    params = param_init_gru(options, params, prefix, nin=nin*coef_in, dim=dim)
+
 
     # context to LSTM
     Wc = norm_weight(dimctx,dim*2)
@@ -677,7 +717,7 @@ def param_init_gru_cond(options, params, prefix='gru_cond', nin=None, dim=None, 
     if dimctx == None:
         dimctx = options['dim']
 
-    params = param_init_gru(options, params, prefix, nin=nin, dim=dim)
+    params = param_init_gru_nonlin(options, params, prefix, nin=nin, dim=dim)
 
     # context to LSTM
     Wc = norm_weight(dimctx,dim*2)
@@ -685,18 +725,26 @@ def param_init_gru_cond(options, params, prefix='gru_cond', nin=None, dim=None, 
 
     Wcx = norm_weight(dimctx,dim)
     params[_p(prefix,'Wcx')] = Wcx
+    
+    if options['bow_source_minus_target'] and options['bow_att_tarPred_decoderState_connections']:
+        W_bow_decState = norm_weight(nin,dim*2)
+        params[_p(prefix,'W_bow_decState')] = W_bow_decState
+        
+        Wx_bow_decState = norm_weight(nin,dim)
+        params[_p(prefix,'Wx_bow_decState')] = Wx_bow_decState
+    
+    if options['bow_source_minus_target'] and options['bow_attention_connection']:
+        W_bow_att = norm_weight(nin,dimctx)
+        params[_p(prefix,'W_bow_att')] = W_bow_att
+    
 
-    # attention: prev -> hidden
-    Wi_att = norm_weight(nin,dimctx)
-    params[_p(prefix,'Wi_att')] = Wi_att
+    # attention: combined -> hidden
+    W_comb_att = norm_weight(dim,dimctx)
+    params[_p(prefix,'W_comb_att')] = W_comb_att
 
     # attention: context -> hidden
     Wc_att = norm_weight(dimctx)
     params[_p(prefix,'Wc_att')] = Wc_att
-
-    # attention: LSTM -> hidden
-    Wd_att = norm_weight(dim,dimctx)
-    params[_p(prefix,'Wd_att')] = Wd_att
 
     # attention: hidden bias
     b_att = numpy.zeros((dimctx,)).astype('float32')
@@ -740,7 +788,7 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
     # projected context 
     assert context.ndim == 3, 'Context must be 3-d: #annotation x #sample x dim'
     pctx_ = tensor.dot(context, tparams[_p(prefix,'Wc_att')]) + tparams[_p(prefix,'b_att')]
-
+        
     def _slice(_x, n, dim):
         if _x.ndim == 3:
             return _x[:, :, n*dim:(n+1)*dim]
@@ -749,14 +797,30 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
     # projected x
     state_belowx = tensor.dot(state_below, tparams[_p(prefix, 'Wx')]) + tparams[_p(prefix, 'bx')]
     state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')]
-    state_belowc = tensor.dot(state_below, tparams[_p(prefix, 'Wi_att')])
+    #state_belowc = tensor.dot(state_below, tparams[_p(prefix, 'Wi_att')])
+    #import ipdb; ipdb.set_trace()
+    def _step_slice(m_, x_, xx_, h_, ctx_, alpha_, pctx_, cc_,
+                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
+        preact1 = tensor.dot(h_, U)
+        preact1 += x_
+        preact1 = tensor.nnet.sigmoid(preact1)
 
-    def _step_slice(m_, x_, xx_, xc_, h_, ctx_, alpha_, pctx_, cc_,
-                    U, Wc, Wd_att, U_att, c_tt, Ux, Wcx):
+        r1 = _slice(preact1, 0, dim)
+        u1 = _slice(preact1, 1, dim)
+
+        preactx1 = tensor.dot(h_, Ux)
+        preactx1 *= r1
+        preactx1 += xx_
+
+        h1 = tensor.tanh(preactx1)
+
+        h1 = u1 * h_ + (1. - u1) * h1
+        h1 = m_[:,None] * h1 + (1. - m_)[:,None] * h_
+        
         # attention
-        pstate_ = tensor.dot(h_, Wd_att)
+        pstate_ = tensor.dot(h1, W_comb_att)
         pctx__ = pctx_ + pstate_[None,:,:] 
-        pctx__ += xc_
+        #pctx__ += xc_
         pctx__ = tensor.tanh(pctx__)
         alpha = tensor.dot(pctx__, U_att)+c_tt
         alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
@@ -766,36 +830,171 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
         alpha = alpha / alpha.sum(0, keepdims=True)
         ctx_ = (cc_ * alpha[:,:,None]).sum(0) # current context
 
-        preact = tensor.dot(h_, U)
-        preact += x_
-        preact += tensor.dot(ctx_, Wc)
-        preact = tensor.nnet.sigmoid(preact)
+        preact2 = tensor.dot(h1, U_nl)+b_nl
+        preact2 += tensor.dot(ctx_, Wc)
+        preact2 = tensor.nnet.sigmoid(preact2)
 
-        r = _slice(preact, 0, dim)
-        u = _slice(preact, 1, dim)
+        r2 = _slice(preact2, 0, dim)
+        u2 = _slice(preact2, 1, dim)
 
-        preactx = tensor.dot(h_, Ux)
-        preactx *= r
-        preactx += xx_
-        preactx += tensor.dot(ctx_, Wcx)
+        preactx2 = tensor.dot(h1, Ux_nl)+bx_nl
+        preactx2 *= r2
+        preactx2 += tensor.dot(ctx_, Wcx)
 
-        h = tensor.tanh(preactx)
+        h2 = tensor.tanh(preactx2)
 
-        h = u * h_ + (1. - u) * h
-        h = m_[:,None] * h + (1. - m_)[:,None] * h_
+        h2 = u2 * h1 + (1. - u2) * h2
+        h2 = m_[:,None] * h2 + (1. - m_)[:,None] * h1
 
-        return h, ctx_, alpha.T #, pstate_, preact, preactx, r, u
+        return h2, ctx_, alpha.T #, pstate_, preact, preactx, r, u
 
-    seqs = [mask, state_below_, state_belowx, state_belowc]
+    seqs = [mask, state_below_, state_belowx]
+    #seqs = [mask, state_below_, state_belowx, state_belowc]
     _step = _step_slice
 
     shared_vars = [tparams[_p(prefix, 'U')],
                    tparams[_p(prefix, 'Wc')],
-                   tparams[_p(prefix,'Wd_att')],
+                   tparams[_p(prefix,'W_comb_att')],
                    tparams[_p(prefix,'U_att')], 
                    tparams[_p(prefix, 'c_tt')], 
                    tparams[_p(prefix, 'Ux')], 
-                   tparams[_p(prefix, 'Wcx')]]
+                   tparams[_p(prefix, 'Wcx')],
+                   tparams[_p(prefix, 'U_nl')],
+                   tparams[_p(prefix, 'Ux_nl')],
+                   tparams[_p(prefix, 'b_nl')],
+                   tparams[_p(prefix, 'bx_nl')]]
+
+    if one_step:
+        rval = _step(*(seqs+[init_state, None, None, pctx_, context]+shared_vars))
+    else:
+        rval, updates = theano.scan(_step, 
+                                    sequences=seqs,
+                                    outputs_info = [init_state, 
+                                                    tensor.alloc(0., n_samples, context.shape[2]),
+                                                    tensor.alloc(0., n_samples, context.shape[0])],
+                                                    #None, None, None, 
+                                                    #None, None],
+                                    non_sequences=[pctx_,
+                                                   context]+shared_vars,
+                                    name=_p(prefix, '_layers'),
+                                    n_steps=nsteps,
+                                    profile=profile,
+                                    strict=True)
+    return rval
+
+def gru_bow_cond_layer(tparams, state_below, options, prefix='gru', 
+                        mask=None, context=None, one_step=False, 
+                        init_memory=None, init_state=None, 
+                        context_mask=None, emb_src_minus_trg=None,
+                        **kwargs):
+
+    assert context, 'Context must be provided'
+    assert emb_src_minus_trg, 'Source minus target BOW must be provided'
+
+    if one_step:
+        assert init_state, 'previous state must be provided'
+
+    nsteps = state_below.shape[0]
+    if state_below.ndim == 3:
+        n_samples = state_below.shape[1]
+    else:
+        n_samples = 1
+
+    # mask
+    if mask == None:
+        mask = tensor.alloc(1., state_below.shape[0], 1)
+
+    dim = tparams[_p(prefix, 'Wcx')].shape[1]
+
+    # initial/previous state
+    if init_state == None:
+        init_state = tensor.alloc(0., n_samples, dim)
+
+    # projected context 
+    assert context.ndim == 3, 'Context must be 3-d: #annotation x #sample x dim'
+    pctx_ = tensor.dot(context, tparams[_p(prefix,'Wc_att')]) + tparams[_p(prefix,'b_att')]
+
+    # projected src minus target BOW
+    p_src_minus_trg = tensor.dot(emb_src_minus_trg, tparams[_p(prefix,'W_bow_att')])
+        
+    def _slice(_x, n, dim):
+        if _x.ndim == 3:
+            return _x[:, :, n*dim:(n+1)*dim]
+        return _x[:, n*dim:(n+1)*dim]
+
+    # projected x
+    state_belowx = tensor.dot(state_below, tparams[_p(prefix, 'Wx')]) + tparams[_p(prefix, 'bx')]
+    state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')]
+    if options['bow_att_tarPred_decoderState_connections']:
+        p_bowx = tensor.dot(emb_src_minus_trg, tparams[_p(prefix,'Wx_bow_decState')])
+        p_bow_ = tensor.dot(emb_src_minus_trg, tparams[_p(prefix,'W_bow_decState')])
+        state_belowx += p_bowx
+        state_below_ += p_bow_
+    #state_belowc = tensor.dot(state_below, tparams[_p(prefix, 'Wi_att')])
+    #import ipdb; ipdb.set_trace()
+    def _step_slice(m_, x_, xx_, bow_, h_, ctx_, alpha_, pctx_, cc_,
+                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
+        preact1 = tensor.dot(h_, U)
+        preact1 += x_
+        preact1 = tensor.nnet.sigmoid(preact1)
+
+        r1 = _slice(preact1, 0, dim)
+        u1 = _slice(preact1, 1, dim)
+
+        preactx1 = tensor.dot(h_, Ux)
+        preactx1 *= r1
+        preactx1 += xx_
+
+        h1 = tensor.tanh(preactx1)
+
+        h1 = u1 * h_ + (1. - u1) * h1
+        h1 = m_[:,None] * h1 + (1. - m_)[:,None] * h_
+        
+        # attention
+        pstate_ = tensor.dot(h1, W_comb_att)
+        pctx__ = pctx_ + pstate_[None,:,:] 
+        pctx__ += bow_
+        pctx__ = tensor.tanh(pctx__)
+        alpha = tensor.dot(pctx__, U_att)+c_tt
+        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+        alpha = tensor.exp(alpha)
+        if context_mask:
+            alpha = alpha * context_mask
+        alpha = alpha / alpha.sum(0, keepdims=True)
+        ctx_ = (cc_ * alpha[:,:,None]).sum(0) # current context
+
+        preact2 = tensor.dot(h1, U_nl)+b_nl
+        preact2 += tensor.dot(ctx_, Wc)
+        preact2 = tensor.nnet.sigmoid(preact2)
+
+        r2 = _slice(preact2, 0, dim)
+        u2 = _slice(preact2, 1, dim)
+
+        preactx2 = tensor.dot(h1, Ux_nl)+bx_nl
+        preactx2 *= r2
+        preactx2 += tensor.dot(ctx_, Wcx)
+
+        h2 = tensor.tanh(preactx2)
+
+        h2 = u2 * h1 + (1. - u2) * h2
+        h2 = m_[:,None] * h2 + (1. - m_)[:,None] * h1
+
+        return h2, ctx_, alpha.T #, pstate_, preact, preactx, r, u
+
+    seqs = [mask, state_below_, state_belowx, p_src_minus_trg]
+    _step = _step_slice
+
+    shared_vars = [tparams[_p(prefix, 'U')],
+                   tparams[_p(prefix, 'Wc')],
+                   tparams[_p(prefix,'W_comb_att')],
+                   tparams[_p(prefix,'U_att')], 
+                   tparams[_p(prefix, 'c_tt')], 
+                   tparams[_p(prefix, 'Ux')], 
+                   tparams[_p(prefix, 'Wcx')],
+                   tparams[_p(prefix, 'U_nl')],
+                   tparams[_p(prefix, 'Ux_nl')],
+                   tparams[_p(prefix, 'b_nl')],
+                   tparams[_p(prefix, 'bx_nl')]]
 
     if one_step:
         rval = _step(*(seqs+[init_state, None, None, pctx_, context]+shared_vars))
@@ -1154,10 +1353,17 @@ def lstm_cond_layer(tparams, state_below, options, prefix='lstm',
 
 # initialize all parameters
 def init_params(options):
+    numpy.random.seed(1234)
     params = OrderedDict()
     # embedding
     params['Wemb'] = norm_weight(options['n_words_src'], options['dim_word'])
     params['Wemb_dec'] = norm_weight(options['n_words'], options['dim_word'])
+
+    # BOW embeddings
+    if options['bow_source_minus_target']:
+        params['Wemb_bow_src'] = norm_weight(options['n_words_src'], options['dim_word'])
+        params['Wemb_bow_trg'] = norm_weight(options['n_words'], options['dim_word'])
+
     # encoder: LSTM
     params = get_layer(options['encoder'])[0](options, params, prefix='encoder', 
                                               nin=options['dim_word'], dim=options['dim'])
@@ -1177,11 +1383,22 @@ def init_params(options):
     params = get_layer(options['decoder'])[0](options, params, prefix='decoder', 
                                               nin=options['dim_word'], dim=options['dim'], 
                                               dimctx=ctxdim)
+
+    if options['bow_source_minus_target']:
+        if options['decoder'].endswith('simple'):
+            coef_in = 2
+        else:
+            coef_in = 1
+            if options['bow_targetPred_connection']:
+                params = get_layer('ff')[0](options, params, prefix='ff_logit_bow', nin=options['dim_word'], nout=options['dim_word'], ortho=False)
+    else:
+        coef_in = 1
+
     # readout
     params = get_layer('ff')[0](options, params, prefix='ff_logit_lstm', nin=options['dim'], nout=options['dim_word'], ortho=False)
-    params = get_layer('ff')[0](options, params, prefix='ff_logit_prev', nin=options['dim_word'], nout=options['dim_word'], ortho=False)
+    params = get_layer('ff')[0](options, params, prefix='ff_logit_prev', nin=options['dim_word']*coef_in, nout=options['dim_word'], ortho=False)
     params = get_layer('ff')[0](options, params, prefix='ff_logit_ctx', nin=ctxdim, nout=options['dim_word'], ortho=False)
-    params = get_layer('ff')[0](options, params, prefix='ff_logit', nin=options['dim_word'], nout=options['n_words'])
+    params = get_layer('ff')[0](options, params, prefix='ff_logit', nin=options['dim_word']//2, nout=options['n_words'])
 
     return params
 
@@ -1204,7 +1421,8 @@ def build_model(tparams, options):
     n_timesteps = x.shape[0]
     n_timesteps_trg = y.shape[0]
     n_samples = x.shape[1]
-
+    src_lengths = x_mask.sum(axis=0)
+    
     emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix='encoder',
@@ -1227,7 +1445,9 @@ def build_model(tparams, options):
             opt_ret['hiero_alphas'] = rval[2]
             opt_ret['hiero_betas'] = rval[3]
         # initial state/cell
-        ctx_mean = ctx.mean(0)
+        # ctx_mean = ctx.mean(0)
+        # ctx_mean = (ctx * x_mask[:,:,None]).sum(0) / x_mask.sum(0)[:,None]
+        ctx_mean = concatenate([proj[0][-1],projr[0][-1]], axis=proj[0].ndim-2)
     init_state = get_layer('ff')[1](tparams, ctx_mean, options, prefix='ff_state', activ='tanh')
     init_memory = None
     if options['encoder'] == 'lstm':
@@ -1237,6 +1457,31 @@ def build_model(tparams, options):
     emb_shifted = tensor.zeros_like(emb)
     emb_shifted = tensor.set_subtensor(emb_shifted[1:], emb[:-1])
     emb = emb_shifted
+    
+    #####################################
+    if options['bow_source_minus_target']:
+        # Source: Compute the representation for each sentence
+        emb_bow_src = (tparams['Wemb_bow_src'][x.flatten()].T).reshape([options['dim_word'], n_timesteps, n_samples])
+        emb_bow_src *= x_mask
+        emb_bow_sentence_src = tensor.sum(emb_bow_src, axis=1) #matrix dim_word*n_sample
+
+        # Target: Compute the representation of a word and the previous ones at each time steps
+        emb_bow_trg = tparams['Wemb_bow_trg'][y.flatten()].reshape([n_timesteps_trg, n_samples, options['dim_word']])
+        emb_bow_cumsum_trg = tensor.cumsum(emb_bow_trg, axis=0)
+        emb_bow_cumsum_trg_shifted = tensor.zeros_like(emb_bow_cumsum_trg)
+        emb_bow_cumsum_trg_shifted = tensor.set_subtensor(emb_bow_cumsum_trg_shifted[1:], emb_bow_cumsum_trg[:-1])
+        emb_bow_cumsum_trg = emb_bow_cumsum_trg_shifted
+
+        # Make the source minus target matrix and concatenate to the embedings
+        emb_src_minus_trg = emb_bow_sentence_src.T - emb_bow_cumsum_trg
+        emb_src_minus_trg = emb_src_minus_trg/src_lengths[:,None]
+        if options['decoder'].endswith('simple'):
+            emb = tensor.concatenate([emb, emb_src_minus_trg], axis=2)
+            emb_src_minus_trg = None
+    else:
+        emb_src_minus_trg = None
+    ####################################
+
     # decoder
     proj = get_layer(options['decoder'])[1](tparams, emb, options, 
                                             prefix='decoder', 
@@ -1244,7 +1489,8 @@ def build_model(tparams, options):
                                             context_mask=x_mask,
                                             one_step=False, 
                                             init_state=init_state,
-                                            init_memory=init_memory)
+                                            init_memory=init_memory,
+                                            emb_src_minus_trg=emb_src_minus_trg)
     proj_h = proj[0]
     if options['decoder'].endswith('simple'):
         ctxs = ctx[None,:,:]
@@ -1259,7 +1505,14 @@ def build_model(tparams, options):
     logit_lstm = get_layer('ff')[1](tparams, proj_h, options, prefix='ff_logit_lstm', activ='linear')
     logit_prev = get_layer('ff')[1](tparams, emb, options, prefix='ff_logit_prev', activ='linear')
     logit_ctx = get_layer('ff')[1](tparams, ctxs, options, prefix='ff_logit_ctx', activ='linear')
-    logit = tensor.tanh(logit_lstm+logit_prev+logit_ctx)
+    if options['bow_source_minus_target'] and options['bow_targetPred_connection'] and not options['decoder'].endswith('simple'):
+        logit_bow = get_layer('ff')[1](tparams, emb_src_minus_trg, options, prefix='ff_logit_bow', activ='linear')
+        logit = logit_lstm+logit_prev+logit_ctx+logit_bow
+    else:
+        logit = logit_lstm+logit_prev+logit_ctx
+    #logit = tensor.tanh(logit)
+    logit_shp = logit.shape
+    logit = logit.reshape([logit_shp[0], logit_shp[1], logit_shp[2]//2, 2]).max(-1)
     logit = get_layer('ff')[1](tparams, logit, options, prefix='ff_logit', activ='linear')
     logit_shp = logit.shape
     probs = tensor.nnet.softmax(logit.reshape([logit_shp[0]*logit_shp[1], logit_shp[2]]))
@@ -1282,6 +1535,15 @@ def build_sampler(tparams, options, trng):
     # word embedding (source)
     emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
     embr = tparams['Wemb'][xr.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
+
+    #####################################
+    if options['bow_source_minus_target']:
+        # Source: Compute the sentence representation
+        emb_bow_src = tparams['Wemb_bow_src'][x.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
+        emb_bow_sentence_src = tensor.sum(emb_bow_src, axis=0) #matrix 1*dim_word
+        emb_bow_sentence_src = emb_bow_sentence_src/tensor.cast(n_timesteps, 'float32')
+    ######################################
+
     # encoder
     proj = get_layer(options['encoder'])[1](tparams, emb, options, prefix='encoder')
     if options['decoder'].endswith('simple'):
@@ -1294,7 +1556,8 @@ def build_sampler(tparams, options, trng):
             rval = get_layer(options['hiero'])[1](tparams, ctx, options, prefix='hiero')
             ctx = rval[0]
         # initial state/cell
-        ctx_mean = ctx.mean(0)
+        # ctx_mean = ctx.mean(0)
+        ctx_mean = concatenate([proj[0][-1],projr[0][-1]], axis=proj[0].ndim-2)
     init_state = get_layer('ff')[1](tparams, ctx_mean, options, prefix='ff_state', activ='tanh')
     if options['encoder'] == 'lstm':
         init_memory = get_layer('ff')[1](tparams, ctx_mean, options, prefix='ff_memory', activ='tanh')
@@ -1303,26 +1566,50 @@ def build_sampler(tparams, options, trng):
     outs = [init_state, ctx]
     if options['decoder'].startswith('lstm'):
         outs += [init_memory]
+    if options['bow_source_minus_target']:
+        outs += [emb_bow_sentence_src[0]]
     f_init = theano.function([x], outs, name='f_init', profile=profile)
     print 'Done'
 
     # x: 1 x 1
     y = tensor.vector('y_sampler', dtype='int64')
+    emb_bow_src = tensor.vector('emb_bow_src', dtype='float32')
+    emb_bow_trg = tensor.matrix('emb_bow_trg', dtype='float32')
+
     init_state = tensor.matrix('init_state', dtype='float32')
     if options['decoder'].startswith('lstm'):
         init_memory = tensor.matrix('init_memory', dtype='float32')
     else:
         init_memory = None
-
+    
+    n_timesteps = ctx.shape[0]
+        
     # if it's the first word, emb should be all zero
     emb = tensor.switch(y[:,None] < 0, tensor.alloc(0., 1, tparams['Wemb_dec'].shape[1]), 
                         tparams['Wemb_dec'][y])
+
+    #####################################
+    if options['bow_source_minus_target']:
+        # Target: Compute the representation of a word and the previous ones at each time steps
+        emb_bow_one_new_trg = tensor.switch(y[:,None] < 0, tensor.alloc(0., 1, tparams['Wemb_bow_trg'].shape[1]), 
+                                        tparams['Wemb_bow_trg'][y])
+        emb_bow_cumsum_trg = emb_bow_trg + emb_bow_one_new_trg/tensor.cast(n_timesteps, 'float32')
+
+        # Make the source minus target matrix and concatenate to the embedings
+        emb_src_minus_trg = emb_bow_src[None,:] - emb_bow_cumsum_trg
+        if options['decoder'].endswith('simple'):
+            emb = tensor.concatenate([emb, emb_src_minus_trg], axis=1)
+            emb_src_minus_trg = None
+    else:
+        emb_src_minus_trg = None
+
     proj = get_layer(options['decoder'])[1](tparams, emb, options, 
                                             prefix='decoder', 
                                             mask=None, context=ctx, 
                                             one_step=True, 
                                             init_state=init_state,
-                                            init_memory=init_memory)
+                                            init_memory=init_memory,
+                                            emb_src_minus_trg=emb_src_minus_trg)
     if options['decoder'].endswith('simple'):
         next_state = proj
         ctxs = ctx
@@ -1336,7 +1623,13 @@ def build_sampler(tparams, options, trng):
     logit_lstm = get_layer('ff')[1](tparams, next_state, options, prefix='ff_logit_lstm', activ='linear')
     logit_prev = get_layer('ff')[1](tparams, emb, options, prefix='ff_logit_prev', activ='linear')
     logit_ctx = get_layer('ff')[1](tparams, ctxs, options, prefix='ff_logit_ctx', activ='linear')
-    logit = tensor.tanh(logit_lstm+logit_prev+logit_ctx)
+    if options['bow_source_minus_target']  and options['bow_targetPred_connection'] and not options['decoder'].endswith('simple'):
+        logit_bow = get_layer('ff')[1](tparams, emb_src_minus_trg, options, prefix='ff_logit_bow', activ='linear')
+        logit = logit_lstm+logit_prev+logit_ctx+logit_bow
+    else:
+        logit = logit_lstm+logit_prev+logit_ctx
+    logit_shp = logit.shape
+    logit = logit.reshape([logit_shp[0], logit_shp[1]//2, 2]).max(-1)
     logit = get_layer('ff')[1](tparams, logit, options, prefix='ff_logit', activ='linear')
     next_probs = tensor.nnet.softmax(logit)
     next_sample = trng.multinomial(pvals=next_probs).argmax(1)
@@ -1348,6 +1641,9 @@ def build_sampler(tparams, options, trng):
     if options['decoder'].startswith('lstm'):
         inps += [init_memory]
         outs += [next_memory]
+    if options['bow_source_minus_target']:
+        inps += [emb_bow_src, emb_bow_trg]
+        outs += [emb_bow_cumsum_trg]
     f_next = theano.function(inps, outs, name='f_next', profile=profile)
     print 'Done'
 
@@ -1355,7 +1651,7 @@ def build_sampler(tparams, options, trng):
 
 # generate sample
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30, 
-               stochastic=True, argmax=False):
+               minlen=-1, stochastic=True, argmax=False):
     if k > 1:
         assert not stochastic, 'Beam search does not support stochastic sampling'
 
@@ -1372,11 +1668,17 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
     hyp_states = []
     if options['decoder'].startswith('lstm'):
         hyp_memories = []
+    if options['bow_source_minus_target']:
+        hyp_bow_trg = []
 
     ret = f_init(x)
-    next_state, ctx0 = ret[0], ret[1]
+    next_state = ret.pop(0)
+    ctx0 = ret.pop(0)
     if options['decoder'].startswith('lstm'):
-        next_memory = ret[2]
+        next_memory = ret.pop(0)
+    if options['bow_source_minus_target']:
+        emb_bow_sentence_src = ret.pop(0)
+    next_bow_trg = numpy.zeros((1, options['dim_word']), dtype='float32')
     next_w = -1 * numpy.ones((1,)).astype('int64')
 
     for ii in xrange(maxlen):
@@ -1388,10 +1690,17 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
         inps = [next_w, ctx, next_state]
         if options['decoder'].startswith('lstm'):
             inps += [next_memory]
+        if options['bow_source_minus_target']:
+            inps += [emb_bow_sentence_src, next_bow_trg]
+
         ret = f_next(*inps)
-        next_p, next_w, next_state = ret[0], ret[1], ret[2]
+        next_p = ret.pop(0)
+        next_w = ret.pop(0)
+        next_state = ret.pop(0)
         if options['decoder'].startswith('lstm'):
-            next_memory = ret[3]
+            next_memory = ret.pop(0)
+        if options['bow_source_minus_target']:
+            next_bow_trg = ret.pop(0)
 
         if stochastic:
             if argmax:
@@ -1417,6 +1726,8 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
             new_hyp_states = []
             if options['decoder'].startswith('lstm'):
                 new_hyp_memories = []
+            if options['bow_source_minus_target']:
+                new_hyp_bow_trg = []
 
             for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                 new_hyp_samples.append(hyp_samples[ti]+[wi])
@@ -1424,6 +1735,8 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
                 new_hyp_states.append(copy.copy(next_state[ti]))
                 if options['decoder'].startswith('lstm'):
                     new_hyp_memories.append(copy.copy(next_memory[ti]))
+                if options['bow_source_minus_target']:
+                    new_hyp_bow_trg.append(copy.copy(next_bow_trg[ti]))
 
             # check the finished samples
             new_live_k = 0
@@ -1432,11 +1745,14 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
             hyp_states = []
             if options['decoder'].startswith('lstm'):
                 hyp_memories = []
+            if options['bow_source_minus_target']:
+                hyp_bow_trg = []
 
             for idx in xrange(len(new_hyp_samples)):
                 if new_hyp_samples[idx][-1] == 0:
-                    sample.append(new_hyp_samples[idx])
-                    sample_score.append(new_hyp_scores[idx])
+                    if len(new_hyp_samples[idx]) >= minlen:
+                        sample.append(new_hyp_samples[idx])
+                        sample_score.append(new_hyp_scores[idx])
                     dead_k += 1
                 else:
                     new_live_k += 1
@@ -1445,6 +1761,8 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
                     hyp_states.append(new_hyp_states[idx])
                     if options['decoder'].startswith('lstm'):
                         hyp_memories.append(new_hyp_memories[idx])
+                    if options['bow_source_minus_target']:
+                        hyp_bow_trg.append(new_hyp_bow_trg[idx])
             hyp_scores = numpy.array(hyp_scores)
             live_k = new_live_k
 
@@ -1457,6 +1775,8 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
             next_state = numpy.array(hyp_states)
             if options['decoder'].startswith('lstm'):
                 next_memory = numpy.array(hyp_memories)
+            if options['bow_source_minus_target']:
+                next_bow_trg = numpy.array(hyp_bow_trg)
 
     if not stochastic:
         # dump every remaining one
@@ -1477,7 +1797,10 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask = prepare_data(x, y, n_words_src=options['n_words_src'], n_words=options['n_words'])
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=50, n_words_src=options['n_words_src'], n_words=options['n_words'])
+        
+        if x == None:
+            continue
 
         pprobs = f_log_probs(x,x_mask,y,y_mask)
         for pp in pprobs:
@@ -1526,6 +1849,23 @@ def adam(lr, tparams, grads, inp, cost):
     return f_grad_shared, f_update
 
 def adadelta(lr, tparams, grads, inp, cost):
+    running_up2 = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rup2'%k) for k, p in tparams.iteritems()]
+    running_grads2 = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rgrad2'%k) for k, p in tparams.iteritems()]
+
+    rg2_new = [0.95 * rg2 + 0.05 * (g ** 2) for rg2, g in zip(running_grads2, grads)]
+    rg2up = [(rg2, r_n) for rg2, r_n in zip(running_grads2, rg2_new)]
+    
+    
+    updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg for zg, ru2, rg2 in zip(grads, running_up2, rg2_new)]
+    ru2up = [(ru2, 0.95 * ru2 + 0.05 * (ud ** 2)) for ru2, ud in zip(running_up2, updir)]
+    param_up = [(p, p + ud) for p, ud in zip(itemlist(tparams), updir)]
+
+    inp += [lr]
+    f_update = theano.function(inp, cost, updates=rg2up+ru2up+param_up, on_unused_input='ignore', profile=profile)
+
+    return f_update
+
+def debugging_adadelta(lr, tparams, grads, inp, cost):
     zipped_grads = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_grad'%k) for k, p in tparams.iteritems()]
     running_up2 = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rup2'%k) for k, p in tparams.iteritems()]
     running_grads2 = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rgrad2'%k) for k, p in tparams.iteritems()]
@@ -1534,6 +1874,7 @@ def adadelta(lr, tparams, grads, inp, cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2)) for rg2, g in zip(running_grads2, grads)]
 
     f_grad_shared = theano.function(inp, cost, updates=zgup+rg2up, profile=profile)
+    
     
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg for zg, ru2, rg2 in zip(zipped_grads, running_up2, running_grads2)]
     ru2up = [(ru2, 0.95 * ru2 + 0.05 * (ud ** 2)) for ru2, ud in zip(running_up2, updir)]
@@ -1579,7 +1920,7 @@ def train(dim_word=100, # word vector dimensionality
           decoder='gru_cond',
           hiero=None, #'gru_hiero', # or None
           patience=10,
-          max_epochs=5,
+          max_epochs=5000,
           dispFreq=100,
           decay_c=0., 
           alpha_c=0., 
@@ -1600,11 +1941,27 @@ def train(dim_word=100, # word vector dimensionality
           dictionary_src=None, # word dictionary
           use_dropout=False,
           reload_=False,
+          bow_source_minus_target=False,
+          bow_attention_connection=False,
+          bow_targetPred_connection=False,
+          bow_att_tarPred_decoderState_connections=False,
           clip_c=0.):
 
     # Model options
     model_options = locals().copy()
 
+    if  bow_source_minus_target==True and not (bow_attention_connection or bow_targetPred_connection or bow_att_tarPred_decoderState_connections):
+        sys.exit("Need bow_attention_connection or bow_targetPred_connection or bow_att_tarPred_decoderState_connections to be True")
+    
+    if bow_att_tarPred_decoderState_connections==True:
+        bow_attention_connection=True
+        bow_targetPred_connection=True
+        model_options['bow_attention_connection']=True
+        model_options['bow_targetPred_connection']=True
+    
+    if  bow_source_minus_target==True and bow_attention_connection and model_options['encoder']=='gru' and model_options['decoder']=='gru_cond':
+        model_options['decoder']='gru_bow_cond'
+    
     if dictionary:
         with open(dictionary, 'rb') as f:
             word_dict = pkl.load(f)
@@ -1623,7 +1980,7 @@ def train(dim_word=100, # word vector dimensionality
     if reload_ and os.path.exists(saveto):
         with open('%s.pkl'%saveto, 'rb') as f:
             models_options = pkl.load(f)
-
+    #import ipdb; ipdb.set_trace()
     print 'Loading data'
     load_data, prepare_data = get_dataset(dataset)
     train, valid, test = load_data(batch_size=batch_size)
@@ -1643,7 +2000,7 @@ def train(dim_word=100, # word vector dimensionality
           build_model(tparams, model_options)
     inps = [x, x_mask, y, y_mask]
 
-    theano.printing.debugprint(cost.mean(), file=open('cost.txt', 'w'))
+    #theano.printing.debugprint(cost.mean(), file=open('cost.txt', 'w'))
 
     print 'Buliding sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng)
@@ -1685,7 +2042,7 @@ def train(dim_word=100, # word vector dimensionality
     print 'Building f_grad...',
     f_grad = theano.function(inps, grads, profile=profile)
     print 'Done'
-    
+
     #Cliping gradients
     if clip_c > 0.:
         g2 = 0.
@@ -1700,7 +2057,8 @@ def train(dim_word=100, # word vector dimensionality
 
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
+    #f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
+    f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
     print 'Done'
 
     print 'Optimization'
@@ -1723,7 +2081,7 @@ def train(dim_word=100, # word vector dimensionality
     estop = False
     for eidx in xrange(max_epochs):
         n_samples = 0
-
+        #import ipdb; ipdb.set_trace()
         train.start()
         for x, y in train:
             n_samples += len(x)
@@ -1734,13 +2092,14 @@ def train(dim_word=100, # word vector dimensionality
                                                 n_words_src=n_words_src, n_words=n_words)
 
             if x == None:
-                print 'Minibatch with zero sample under length ', maxlen
+                #print 'Minibatch with zero sample under length ', maxlen
                 uidx -= 1
                 continue
 
             ud_start = time.time()
-            cost = f_grad_shared(x, x_mask, y, y_mask)
-            f_update(lrate)
+            #cost = f_grad_shared(x, x_mask, y, y_mask)
+            #f_update(lrate)
+            cost = f_update(x, x_mask, y, y_mask, lrate)
             ud = time.time() - ud_start
 
             if numpy.isnan(cost) or numpy.isinf(cost):
@@ -1761,7 +2120,7 @@ def train(dim_word=100, # word vector dimensionality
                     params = unzip(tparams)
 
                 saveto_list = saveto.split('/')
-                saveto_list[-1] = 'epoch' + str(eidx) + '_' + saveto_list[-1]
+                saveto_list[-1] = 'epoch' + str(eidx) + '_' + 'nbSamp' + str(n_samples) + '_' + saveto_list[-1]
                 saveName = '/'.join(saveto_list)
                 numpy.savez(saveName, history_errs=history_errs, **params)
                 pkl.dump(model_options, open('%s.pkl'%saveName, 'wb'))
@@ -1826,7 +2185,6 @@ def train(dim_word=100, # word vector dimensionality
                 #train_err = 1. - numpy.float32(train_err) / train[0].shape[0]
 
                 #train_err = pred_error(f_pred, prepare_data, train, kf)
-                #train_err = pred_probs(f_log_probs, prepare_data, model_options, train).mean()
                 if valid != None:
                     valid_err = pred_probs(f_log_probs, prepare_data, model_options, valid).mean()
                 if test != None:
@@ -1846,9 +2204,11 @@ def train(dim_word=100, # word vector dimensionality
 
                 print 'Train ', train_err, 'Valid ', valid_err, 'Test ', test_err
 
+                print 'Seen %d samples'%n_samples
+
         #print 'Epoch ', eidx, 'Update ', uidx, 'Train ', train_err, 'Valid ', valid_err, 'Test ', test_err
 
-        print 'Seen %d samples'%n_samples
+        #print 'Seen %d samples'%n_samples
 
         if estop:
             break

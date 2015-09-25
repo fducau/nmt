@@ -11,18 +11,25 @@ from nmt import train
 parser = argparse.ArgumentParser()
 parser.add_argument('-dw', '--dim_word', required=False, default='50', help='Size of the word representation')
 parser.add_argument('-d', '--dim_model', required=False, default='200', help='Size of the hidden representation')
+parser.add_argument('-l', '--lr', required=False, default='0.001', help='learning rate')
 parser.add_argument('-data', '--dataset', required=False, default='sub_europarl', help='ex: sub_europarl, europarl')
-
-
+parser.add_argument('-b', '--use_bow', required=False, default='False', help='ex: True, False')
+parser.add_argument('-ba', '--use_bow_att', required=False, default='False', help='ex: True, False')
+parser.add_argument('-bt', '--use_bow_tarPred', required=False, default='False', help='ex: True, False')
+parser.add_argument('-batd', '--use_bow_att_tarPred_decState', required=False, default='False', help='ex: True, False')
+parser.add_argument('-bs', '--batch_size', required=False, default='64', help='Size of the batch')
 
 args = parser.parse_args()
 
 dim_word = int(args.dim_word)
 dim_model = int(args.dim_model)
+lr = float(args.lr)
 dataset = args.dataset
-
-
-
+use_bow = eval(args.use_bow)
+use_bow_att = eval(args.use_bow_att)
+use_bow_tarPred = eval(args.use_bow_tarPred)
+use_bow_att_tarPred_decState = eval(args.use_bow_att_tarPred_decState)
+batch_size = int(args.batch_size)
 
 
 
@@ -37,15 +44,15 @@ if not os.path.exists(dirPath):
         print 'Exeption was catch, will continue script \n'
 
 if dataset == "sub_europarl":
-    dirModelName = "model_gru_sub_europarl_enfr_" + "_".join([str(dim_word), str(dim_model)])
+    dirModelName = "model_gru_sub_europarl_enfr_" + "_".join([str(dim_word), str(dim_model), str(lr), str(use_bow), str(use_bow_att), str(use_bow_tarPred), str(use_bow_att_tarPred_decState), str(batch_size)])
 elif dataset == "europarl":
-    dirModelName = "model_gru_europarl_enfr_" + "_".join([str(dim_word), str(dim_model)])
+    dirModelName = "model_gru_europarl_enfr_" + "_".join([str(dim_word), str(dim_model), str(lr), str(use_bow), str(use_bow_att), str(use_bow_tarPred), str(use_bow_att_tarPred_decState), str(batch_size)])
 elif dataset == "small_europarl_enfr":
-    dirModelName = "model_gru_small_europarl_enfr_" + "_".join([str(dim_word), str(dim_model)])
+    dirModelName = "model_gru_europarl_enfr_" + "_".join([str(dim_word), str(dim_model), str(lr), str(use_bow), str(use_bow_att), str(use_bow_tarPred), str(use_bow_att_tarPred_decState), str(batch_size)])
 elif dataset == "wmt_all_enfr":
-    dirModelName = "model_gru_wmt_all_enfr_" + "_".join([str(dim_word), str(dim_model)])
+    dirModelName = "model_gru_wmt_all_enfr_" + "_".join([str(dim_word), str(dim_model), str(lr), str(use_bow), str(use_bow_att), str(use_bow_tarPred), str(use_bow_att_tarPred_decState), str(batch_size)])
 elif dataset == "de_en":
-    dirModelName = "model_gru_statmt_deen_" + "_".join([str(dim_word), str(dim_model)])
+    dirModelName = "model_gru_statmt_deen_" + "_".join([str(dim_word), str(dim_model), str(lr), str(use_bow), str(use_bow_att), str(use_bow_tarPred), str(use_bow_att_tarPred_decState), str(batch_size)])
 else:
     sys.exit("Wrong dataset")
 
@@ -66,10 +73,10 @@ if dataset == "sub_europarl":
     n_words_src = 1025
     n_words_trg = 1153
     dataset = 'stan'
-    dictionary_trg='../../data/vocab_and_data_wmt_all_enfr/vocab_sub_europarl.fr.pkl'
-    dictionary_src='../../data/vocab_and_data_wmt_all_enfrx/vocab_sub_europarl.en.pkl'
+    dictionary_trg='../../data/vocab_and_data_sub_europarl/vocab_sub_europarl.fr.pkl'
+    dictionary_src='../../data/vocab_and_data_sub_europarl/vocab_sub_europarl.en.pkl'
 
-    batch_size = 64
+    #batch_size = 64
     nb_batch_epoch = 4
 
 elif dataset == "europarl":
@@ -79,7 +86,7 @@ elif dataset == "europarl":
     dictionary_src='../../data/vocab_and_data_europarl/vocabEuroparl.en.pkl'
 
     sizeTrainset = 1405407.0
-    batch_size = 64
+    #batch_size = 64
     nb_batch_epoch = np.ceil(sizeTrainset/batch_size)
 
 elif dataset == "small_europarl_enfr":
@@ -89,9 +96,9 @@ elif dataset == "small_europarl_enfr":
     dictionary_src='../../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl'
 
     sizeTrainset = 500000.0
-    batch_size = 64
+    #batch_size = 64
     nb_batch_epoch = np.ceil(sizeTrainset/batch_size)
-    
+
 elif dataset == "wmt_all_enfr":
     n_words_src=30000
     n_words_trg=30000
@@ -99,8 +106,8 @@ elif dataset == "wmt_all_enfr":
     dictionary_src='../../data/vocab_and_data_wmt_all_enfr/vocab_wmt_all.en.pkl'
 
     sizeTrainset = 12075604.0
-    batch_size = 64
-    nb_batch_epoch = np.ceil(sizeTrainset/batch_size)
+    #batch_size = 64
+    nb_batch_epoch = np.ceil(sizeTrainset/(batch_size*4))
 
 elif dataset == "de_en":
     n_words_src=30000
@@ -109,7 +116,7 @@ elif dataset == "de_en":
     dictionary_src='../../data/vocab_and_data_de_en/vocab.de.pkl'
 
     sizeTrainset = 4535522.0
-    batch_size = 64
+    #batch_size = 64
     nb_batch_epoch = np.ceil(sizeTrainset/batch_size)
 
 trainerr, validerr, testerr = train(saveto=modelName,
@@ -126,7 +133,7 @@ trainerr, validerr, testerr = train(saveto=modelName,
                                     decay_c=0.,
                                     alpha_c=0.,
                                     diag_c=0.,# not used with adadelta
-                                    lrate=0.,
+                                    lrate=lr,
                                     patience=10,
                                     maxlen=50,
                                     batch_size=batch_size,
@@ -139,4 +146,8 @@ trainerr, validerr, testerr = train(saveto=modelName,
                                     dictionary=dictionary_trg,
                                     dictionary_src=dictionary_src,
                                     use_dropout=False,
+                                    bow_source_minus_target=use_bow,
+                                    bow_attention_connection=use_bow_att,
+                                    bow_targetPred_connection=use_bow_tarPred,
+                                    bow_att_tarPred_decoderState_connections=use_bow_att_tarPred_decState,
                                     clip_c=1.)
