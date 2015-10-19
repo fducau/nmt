@@ -1398,7 +1398,7 @@ def init_params(options):
     params = get_layer('ff')[0](options, params, prefix='ff_logit_lstm', nin=options['dim'], nout=options['dim_word'], ortho=False)
     params = get_layer('ff')[0](options, params, prefix='ff_logit_prev', nin=options['dim_word']*coef_in, nout=options['dim_word'], ortho=False)
     params = get_layer('ff')[0](options, params, prefix='ff_logit_ctx', nin=ctxdim, nout=options['dim_word'], ortho=False)
-    params = get_layer('ff')[0](options, params, prefix='ff_logit', nin=options['dim_word']//2, nout=options['n_words'])
+    params = get_layer('ff')[0](options, params, prefix='ff_logit', nin=options['dim_word'], nout=options['n_words'])
 
     return params
 
@@ -1507,12 +1507,10 @@ def build_model(tparams, options):
     logit_ctx = get_layer('ff')[1](tparams, ctxs, options, prefix='ff_logit_ctx', activ='linear')
     if options['bow_source_minus_target'] and options['bow_targetPred_connection'] and not options['decoder'].endswith('simple'):
         logit_bow = get_layer('ff')[1](tparams, emb_src_minus_trg, options, prefix='ff_logit_bow', activ='linear')
-        logit = logit_lstm+logit_prev+logit_ctx+logit_bow
+        logit = tensor.tanh(logit_lstm+logit_prev+logit_ctx+logit_bow)
     else:
-        logit = logit_lstm+logit_prev+logit_ctx
-    #logit = tensor.tanh(logit)
-    logit_shp = logit.shape
-    logit = logit.reshape([logit_shp[0], logit_shp[1], logit_shp[2]//2, 2]).max(-1)
+        logit = tensor.tanh(logit_lstm+logit_prev+logit_ctx)
+    
     logit = get_layer('ff')[1](tparams, logit, options, prefix='ff_logit', activ='linear')
     logit_shp = logit.shape
     probs = tensor.nnet.softmax(logit.reshape([logit_shp[0]*logit_shp[1], logit_shp[2]]))
@@ -1625,11 +1623,10 @@ def build_sampler(tparams, options, trng):
     logit_ctx = get_layer('ff')[1](tparams, ctxs, options, prefix='ff_logit_ctx', activ='linear')
     if options['bow_source_minus_target']  and options['bow_targetPred_connection'] and not options['decoder'].endswith('simple'):
         logit_bow = get_layer('ff')[1](tparams, emb_src_minus_trg, options, prefix='ff_logit_bow', activ='linear')
-        logit = logit_lstm+logit_prev+logit_ctx+logit_bow
+        logit = tensor.tanh(logit_lstm+logit_prev+logit_ctx+logit_bow)
     else:
-        logit = logit_lstm+logit_prev+logit_ctx
-    logit_shp = logit.shape
-    logit = logit.reshape([logit_shp[0], logit_shp[1]//2, 2]).max(-1)
+        logit = tensor.tanh(logit_lstm+logit_prev+logit_ctx)
+    
     logit = get_layer('ff')[1](tparams, logit, options, prefix='ff_logit', activ='linear')
     next_probs = tensor.nnet.softmax(logit)
     next_sample = trng.multinomial(pvals=next_probs).argmax(1)
