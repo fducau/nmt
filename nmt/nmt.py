@@ -198,12 +198,13 @@ def discriminator_adversarial(B, tparams, options):
     # return discriminator_adversarial
     return D
 
+#TODO: TRY TO MERGE WITH THE BUILD DISCRIMINATOR MODEL
 def build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options):
     #D_orig = tensor.matrix('D_orig', dtype='float32')
     #D_fake = tensor.matrix('D_fake', dtype='float32')
     
     # Review
-    cost = -tensor.mean(tensor.log(1e-6 + D_orig) + tensor.log(1e-6 + 1. - D_fake))
+    cost = -tensor.mean(tensor.sum(tensor.log(1e-6 + D_orig)) + tensor.sum(tensor.log(1e-6 + 1. - D_fake)))
     #discriminator_adversarial_cost = theano.function(inps, outs, name='discriminator_adversarial_cost', profile=profile)
     #return discriminator_adversarial_cost
     return cost
@@ -351,6 +352,15 @@ def build_discriminator_model(tparams, options):
     cost_discriminator = build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options)
 
     return B_tf, cost_discriminator, D_orig, D_fake
+
+def build_generator_model(tparams, options):
+    B_f = tensor.matrix('B_fake', dtype='float32')
+
+    D_fake = discriminator_adversarial(B_fake, tparams, options)
+    cost_generator = build_adversarial_generator_cost(D_fake, tparams, options)
+
+    return B_f, cost_generator, D_fake
+
 
 # build a sampler
 def build_sampler(tparams, options, trng):
@@ -674,14 +684,15 @@ def train(dim_word=100,  # word vector dimensionality
 
     trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, B_teacher_forcing, B_free_running, D_fake, cost_generator = build_model(tparams, model_options)
     B_tf, cost_discriminator, D_orig, D_f = build_discriminator_model(tparams, model_options)
+    B_f, cost_generator, D_fake = build_generator_model(tparams, model_options)
 
     inps = [x, x_mask, y, y_mask]
     inps_discriminator = [B_tf, D_f]
-    inps_gen_adversarial = [x, x_mask, y]
+    inps_gen_adversarial = [B_f]
 
     f_B = theano.function(inps, [B_teacher_forcing, B_free_running])
     f_D_orig = theano.function([B_tf], [D_orig])
-    f_D_fake = theano.function(inps_gen_adversarial, [D_fake])
+    f_D_fake = theano.function([B_f], [D_fake])
     # theano.printing.debugprint(cost.mean(), file=open('cost.txt', 'w'))
 
     print 'Buliding sampler'
@@ -981,7 +992,7 @@ if __name__ == '__main__':
           decoder='gru_cond',
           hiero=None,
           patience=10,
-          max_epochs=5,
+          max_epochs=100,
           dispFreq=10,
           decay_c=0.,
           alpha_c=0.,
@@ -989,7 +1000,7 @@ if __name__ == '__main__':
           lrate=0.01,
           n_words_src=100000,
           n_words=100000,
-          maxlen=75,
+          maxlen=50,
           optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
@@ -1001,6 +1012,6 @@ if __name__ == '__main__':
           dictionary='../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl',
           dictionary_src='../data/vocab_and_data_small_europarl_v7_enfr/vocab.fr.pkl',
           use_dropout=False,
-          reload_='./saved_models/fr-en/adversarial_complete_init/epoch0_nbUpd1000_model',
+          reload_=False,
           correlation_coeff=0.1,
           clip_c=1.)
