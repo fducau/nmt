@@ -43,7 +43,7 @@ def adam(lr, tparams, grads, inp, cost):
     return f_grad_shared, f_update
 
 
-def adadelta(lr, tparams, grads, inp, cost):
+def adadelta(lr, tparams, grads, inp, returns):
     running_up2 = [theano.shared(p.get_value() * numpy.float32(0.),
                                  name='%s_rup2' % k) for k, p in tparams.iteritems()]
     running_grads2 = [theano.shared(p.get_value() * numpy.float32(0.),
@@ -57,7 +57,7 @@ def adadelta(lr, tparams, grads, inp, cost):
     param_up = [(p, p + ud) for p, ud in zip(itemlist(tparams), updir)]
 
     # inp += [lr]
-    f_update = theano.function(inp + [lr], cost, updates=rg2up + ru2up + param_up,
+    f_update = theano.function(inp + [lr], returns, updates=rg2up + ru2up + param_up,
                                on_unused_input='ignore', profile=profile,
                                mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=False))
 
