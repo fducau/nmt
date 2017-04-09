@@ -203,7 +203,7 @@ def build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options):
     #D_fake = tensor.matrix('D_fake', dtype='float32')
     
     # Review
-    cost = -tensor.mean(tensor.log(1e-6 + D_orig) + tensor.log(1e-6 + 1. - D_fake))
+    cost = -tensor.mean(tensor.sum(tensor.log(1e-6 + D_orig)) + tensor.sum(tensor.log(1e-6 + 1. - D_fake)))
     #discriminator_adversarial_cost = theano.function(inps, outs, name='discriminator_adversarial_cost', profile=profile)
     #return discriminator_adversarial_cost
     return cost
@@ -1001,6 +1001,6 @@ if __name__ == '__main__':
           dictionary='../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl',
           dictionary_src='../data/vocab_and_data_small_europarl_v7_enfr/vocab.fr.pkl',
           use_dropout=False,
-          reload_='./saved_models/fr-en/adversarial_complete_init/epoch0_nbUpd1000_model',
+          reload_=False,
           correlation_coeff=0.1,
           clip_c=1.)
