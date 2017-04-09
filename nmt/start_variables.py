@@ -28,6 +28,7 @@ reload_=False
 correlation_coeff=0.1
 clip_c=1.
 
+
 model_options = {'dim_word':100,
                  'dim':1000,
                  'encoder':'gru',
@@ -56,4 +57,5 @@ model_options = {'dim_word':100,
                  'use_dropout':False,
                  'reload_':False,
                  'correlation_coeff':0.1,
-                 'clip_c':1.}
+                 'clip_c':1., 
+                 'adversarial_mode': 'simple'}
