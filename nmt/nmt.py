@@ -188,7 +188,7 @@ def discriminator_adversarial(B, tparams, options):
 
     #mlp_adversarial = get_layer('mlp_adversarial')[1]
 
-    D = mlp_layer_adversarial(tparams, D, options, prefix='mlp_adversarial')
+    D = mlp_layer(tparams, D, options, prefix='mlp_adversarial')
 
     # inps = [B_orig, B_fake]
     # outs = [D_orig, D_fake]
@@ -203,7 +203,7 @@ def build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options):
     #D_fake = tensor.matrix('D_fake', dtype='float32')
     
     # Review
-    cost = -tensor.mean(tensor.sum(tensor.log(1e-6 + D_orig)) + tensor.sum(tensor.log(1e-6 + 1. - D_fake)))
+    cost = -tensor.mean(tensor.log(1e-6 + D_orig) + tensor.log(1e-6 + 1. - D_fake))
     #discriminator_adversarial_cost = theano.function(inps, outs, name='discriminator_adversarial_cost', profile=profile)
     #return discriminator_adversarial_cost
     return cost
