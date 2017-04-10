@@ -366,7 +366,7 @@ def build_discriminator_model(B_tf_var, D_fake_var, tparams, options):
 
 def build_generator_model(x_mask_var, y_mask_var,
                           emb_var, ctx_var, init_state_var,
-                          tparams, model_optionstparams, options):
+                          tparams, options):
     init_memory = None
     # Decoder in Free Running mode
     decoder_FR = get_layer(options['decoder_FR'])[1]
