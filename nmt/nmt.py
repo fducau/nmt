@@ -1026,7 +1026,7 @@ if __name__ == '__main__':
           dictionary='../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl',
           dictionary_src='../data/vocab_and_data_small_europarl_v7_enfr/vocab.fr.pkl',
           use_dropout=False,
-          reload_='./saved_models/fr-en/epoch8_nbUpd130000_model',
+          reload_=False,
           correlation_coeff=0.1,
           clip_c=1., 
           adversarial_mode='simple')
