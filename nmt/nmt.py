@@ -352,23 +352,21 @@ def build_model(tparams, options):
     return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, B_teacher_forcing, emb, ctx, init_state, init_memory
 
 
-def build_discriminator_model(tparams, options):
-    B_tf_var = tensor.tensor3('B_tf', dtype='float32')
-    D_fake_var = tensor.matrix('D_fake', dtype='float32')
-
+def build_discriminator_model(B_tf_var, D_fake_var, tparams, options):
     D_orig = discriminator_adversarial(B_tf_var, tparams, options)
-    cost_discriminator = build_adversarial_discriminator_cost(D_orig, D_fake_var, tparams, options)
+    # cost_discriminator = build_adversarial_discriminator_cost(D_orig, D_fake_var, tparams, options)
 
-    return B_tf_var, cost_discriminator, D_orig, D_fake_var
+    # Review
+    if options['adversarial_mode'] == 'simple':
+        cost_discriminator = -tensor.mean(tensor.log(1e-6 + D_orig) + tensor.log(1e-6 + 1. - D_fake_var))
+    elif options['adversarial_mode'] == 'complete':
+        cost_discriminator = -tensor.mean(tensor.sum(tensor.log(1e-6 + D_orig), 0) + tensor.sum(tensor.log(1e-6 + 1. - D_fake_var), 0))
 
-def build_generator_model(tparams, options):
-    # description string: #words x #samples
-    x_mask_var = tensor.matrix('x_mask_var', dtype='float32')
-    y_mask_var = tensor.matrix('y_mask_var', dtype='float32')
-    emb_var = tensor.tensor3('emb_var', dtype='float32')
-    ctx_var = tensor.tensor3('ctx_var', dtype='float32')
-    init_state_var = tensor.matrix('init_state_var', dtype='float32')
+    return cost_discriminator, D_orig
 
+def build_generator_model(x_mask_var, y_mask_var,
+                          emb_var, ctx_var, init_state_var,
+                          tparams, model_optionstparams, options):
     init_memory = None
     # Decoder in Free Running mode
     decoder_FR = get_layer(options['decoder_FR'])[1]
@@ -381,9 +379,13 @@ def build_generator_model(tparams, options):
     B_free_running = proj_FR[3]
 
     D_fake = discriminator_adversarial(B_free_running, tparams, options)
-    cost_generator = build_adversarial_generator_cost(D_fake, tparams, options)
 
-    return x_mask_var, y_mask_var, emb_var, ctx_var, init_state_var, cost_generator, D_fake
+    if options['adversarial_mode'] == 'simple':
+        cost_generator = -tensor.mean(tensor.log(D_fake + 1e-6))
+    elif options['adversarial_mode'] == 'complete':
+        cost_generator = -tensor.mean(tensor.sum(tensor.log(D_fake + 1e-6), 0))
+
+    return cost_generator, D_fake
 
 
 # build a sampler
@@ -707,19 +709,27 @@ def train(dim_word=100,  # word vector dimensionality
 
     #trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, B_teacher_forcing, B_free_running, D_fake, cost_generator = build_model(tparams, model_options)
     trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, B_teacher_forcing, emb, ctx, init_state, init_memory = build_model(tparams, model_options)
-
-    B_tf_var, cost_discriminator, D_orig, D_fake_var = build_discriminator_model(tparams, model_options)
-    x_mask_var, y_mask_var, emb_var, ctx_var, init_state_var, cost_generator, D_fake = build_generator_model(tparams, model_options)
+    
+    B_tf_var = tensor.tensor3('B_tf', dtype='float32')
+    D_fake_var = tensor.matrix('D_fake', dtype='float32')
+    cost_discriminator, D_orig = build_discriminator_model(B_tf_var, D_fake_var, tparams, model_options)
+    
+    emb_var = tensor.tensor3('emb_var', dtype='float32')
+    ctx_var = tensor.tensor3('ctx_var', dtype='float32')
+    init_state_var = tensor.matrix('init_state_var', dtype='float32')
+    cost_generator, D_fake = build_generator_model(x_mask, y_mask, 
+                                                   emb_var, ctx_var, init_state_var,
+                                                   tparams, model_options)
     
 
     inps = [x, x_mask, y, y_mask]
     inps_discriminator = [B_tf_var, D_fake_var]
-    inps_gen_adversarial = [x_mask_var, emb_var, ctx_var, init_state_var]
+    inps_gen_adversarial = [x_mask, emb_var, ctx_var, init_state_var]
 
+    get_states = theano.function([x, x_mask, y, y_mask], [B_teacher_forcing, emb, ctx, init_state])
     # f_B = theano.function(inps, [B_teacher_forcing, B_free_running])
     f_D_orig = theano.function([B_tf_var], [D_orig])
     f_D_fake = theano.function(inps_gen_adversarial, [D_fake])
-    # theano.printing.debugprint(cost.mean(), file=open('cost.txt', 'w'))
 
     print 'Buliding sampler'
     f_init, f_next = build_sampler(tparams, model_options, trng)
@@ -781,7 +791,7 @@ def train(dim_word=100,  # word vector dimensionality
     lr_generator = tensor.scalar(name='lr_generator')
     print 'Building optimizers...',
     # f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
-    f_update = eval(optimizer)(lr, params_nll, grads, inps, [cost, B_teacher_forcing, emb, ctx, init_state])
+    f_update = eval(optimizer)(lr, params_nll, grads, inps, cost)
     f_update_discriminator = eval(optimizer)(lr_discriminator, params_adversarial, grads_discriminator, inps_discriminator, cost_discriminator)
     f_update_generator = eval(optimizer)(lr_generator, params_gen_adversarial, grads_generator, inps_gen_adversarial, cost_generator)
 
@@ -837,9 +847,9 @@ def train(dim_word=100,  # word vector dimensionality
             # inps_gen_adversarial = [x_mask_var, emb_var, ctx_var, init_state_var]
             # f_D_orig = theano.function([B_tf_var], [D_orig])
             # f_D_fake = theano.function(inps_gen_adversarial, [D_fake])
-
-            [cost, B_o, emb, ctx, init_state] = f_update(x, x_mask, y, y_mask, lrate)
             
+            cost = f_update(x, x_mask, y, y_mask, lrate)
+            [B_o, emb, ctx, init_state] = get_states(x, x_mask, y, y_mask)
             D_fake = f_D_fake(x_mask, emb, ctx, init_state)[0]
             D_orig = f_D_orig(B_o)[0]
 
@@ -1018,7 +1028,7 @@ if __name__ == '__main__':
           optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
-          saveto='saved_models/fr-en/adversarial_complete_init/model.npz',
+          saveto='saved_models/fr-en/adversarial_complete/model.npz',
           validFreq=1000,
           saveFreq=1000,
           sampleFreq=100,
@@ -1029,4 +1039,4 @@ if __name__ == '__main__':
           reload_=False,
           correlation_coeff=0.1,
           clip_c=1., 
-          adversarial_mode='simple')
+          adversarial_mode='complete')
