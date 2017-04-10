@@ -188,7 +188,7 @@ def discriminator_adversarial(B, tparams, options):
 
     #mlp_adversarial = get_layer('mlp_adversarial')[1]
 
-    D = mlp_layer(tparams, D, options, prefix='mlp_adversarial')
+    D = mlp_layer(tparams, ctx_mean, options, prefix='mlp_adversarial')
 
     # inps = [B_orig, B_fake]
     # outs = [D_orig, D_fake]
