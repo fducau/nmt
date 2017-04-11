@@ -1005,7 +1005,7 @@ if __name__ == '__main__':
           hiero=None,
           patience=10,
           max_epochs=100,
-          dispFreq=10,
+          dispFreq=100,
           decay_c=0.,
           alpha_c=0.,
           diag_c=0.,
