@@ -195,8 +195,8 @@ def build_discriminator_adversarial(B_orig, B_fake, tparams, options):
 
     #mlp_adversarial = get_layer('mlp_adversarial')[1]
 
-    D_orig = mlp_layer_adversarial(tparams, D_orig, options, prefix='mlp_adversarial')
-    D_fake = mlp_layer_adversarial(tparams, D_fake, options, prefix='mlp_adversarial')
+    D_orig = mlp_layer(tparams, ctx_mean_orig, options, prefix='mlp_adversarial')
+    D_fake = mlp_layer(tparams, ctx_mean_fake, options, prefix='mlp_adversarial')
 
     # inps = [B_orig, B_fake]
     # outs = [D_orig, D_fake]
@@ -221,7 +221,7 @@ def build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options):
 
 def build_adversarial_generator_cost(D_fake,tparams, options):
     #D_fake = tensor.matrix('D_fake', dtype='float32')
-    cost = -tensor.mean(tensor.sum(tensor.log(D_fake + 1e-6)))
+    cost = -tensor.mean(tensor.log(D_fake + 1e-6))
 
     #adversarial_generator_cost = theano.function([D_fake], [cost], name='adversarial_generator_cost', profile=profile)
     #return adversarial_generator_cost
@@ -717,9 +717,13 @@ def train(dim_word=100,  # word vector dimensionality
 
     # after any regularizer
     print 'Building f_cost...',
-    f_cost = theano.function(inps, cost, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    f_cost_discriminator = theano.function(inps, cost_discriminator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    f_cost_generator = theano.function(inps_gen_adversarial, cost_generator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    #f_cost = theano.function(inps, cost, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    #f_cost_discriminator = theano.function(inps, cost_discriminator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    #f_cost_generator = theano.function(inps_gen_adversarial, cost_generator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    f_cost = theano.function(inps, cost, profile=profile)
+    f_cost_discriminator = theano.function(inps, cost_discriminator, profile=profile)
+    f_cost_generator = theano.function(inps_gen_adversarial, cost_generator, profile=profile)
+
     print 'Done'
 
     if model_options['hiero'] is not None:
@@ -737,9 +741,13 @@ def train(dim_word=100,  # word vector dimensionality
     grads_generator = tensor.grad(cost_generator, wrt=itemlist(params_gen_adversarial))
     print 'Done'
     #print 'Building f_grad...',
-    f_grad = theano.function(inps, grads, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    f_grad_discriminator = theano.function(inps, grads_discriminator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    f_grad_generator = theano.function(inps_gen_adversarial, grads_generator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    #f_grad = theano.function(inps, grads, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    #f_grad_discriminator = theano.function(inps, grads_discriminator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    #f_grad_generator = theano.function(inps_gen_adversarial, grads_generator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    f_grad = theano.function(inps, grads, profile=profile)
+    f_grad_discriminator = theano.function(inps, grads_discriminator, profile=profile)
+    f_grad_generator = theano.function(inps_gen_adversarial, grads_generator, profile=profile)
+
     #print 'Done'
     print('clip_c: {}'.format(clip_c))
     grads = clip_gradients(clip_c, grads)
@@ -776,14 +784,20 @@ def train(dim_word=100,  # word vector dimensionality
     if sampleFreq == -1:
         sampleFreq = len(train[0]) / batch_size
 
-    uidx = 0
+    if reload_:
+        model_name = reload_.split('/')[-1] 
+        uidx = int(model_name.split('_')[1][5:])
+        eidx_start = int(model_name.split('_')[0][5:])
+    else:
+        uidx = 0
+        eidx_start = 0
     estop = False
 
     #####################
     # Main Training Loop
     #####################
 
-    for eidx in xrange(max_epochs):
+    for eidx in xrange(eidx_start,max_epochs):
         n_samples = 0
 
         train.start()
@@ -798,7 +812,7 @@ def train(dim_word=100,  # word vector dimensionality
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
                 uidx -= 1
-            #    continue
+                continue
 
             ud_start = time.time()
             '''
@@ -981,7 +995,7 @@ if __name__ == '__main__':
           decoder='gru_cond',
           hiero=None,
           patience=10,
-          max_epochs=5,
+          max_epochs=100,
           dispFreq=10,
           decay_c=0.,
           alpha_c=0.,
@@ -993,7 +1007,7 @@ if __name__ == '__main__':
           optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
-          saveto='saved_models/fr-en/adversarial_complete_init/model.npz',
+          saveto='./saved_models/fr-en/pretrained_adversarial_simple/model.npz',
           validFreq=1000,
           saveFreq=1000,
           sampleFreq=100,
@@ -1001,6 +1015,6 @@ if __name__ == '__main__':
           dictionary='../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl',
           dictionary_src='../data/vocab_and_data_small_europarl_v7_enfr/vocab.fr.pkl',
           use_dropout=False,
-          reload_=False,
+          reload_='./saved_models/fr-en/pretrained_adversarial_simple/epoch8_nbUpd151000_model',
           correlation_coeff=0.1,
           clip_c=1.)
