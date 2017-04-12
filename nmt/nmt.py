@@ -33,18 +33,24 @@ from theano.compile.nanguardmode import NanGuardMode
 
 theano.config.floatX = 'float32'
 TINY = tensor.alloc(1e-6).astype('float32')
-#theano.config.dnn.enabled = False
-# datasets: 'name', 'load_data: returns iterator', 'prepare_data: some preprocessing'
-datasets = {'wmt14enfr': (wmt14enfr.load_data, wmt14enfr.prepare_data),
-            'iwslt14zhen': (iwslt14zhen.load_data, iwslt14zhen.prepare_data),
-            'openmt15zhen': (openmt15zhen.load_data, openmt15zhen.prepare_data),
-            'trans_enhi': (trans_enhi.load_data, trans_enhi.prepare_data),
-            'stan': (stan.load_data, stan.prepare_data)
-            }
+# theano.config.dnn.enabled = False
+# data_loaders: 'name', 'load_data: returns iterator', 'prepare_data: some preprocessing'
+
+data_loaders = {'wmt14enfr': (wmt14enfr.load_data,
+                              wmt14enfr.prepare_data),
+                'iwslt14zhen': (iwslt14zhen.load_data,
+                                iwslt14zhen.prepare_data),
+                'openmt15zhen': (openmt15zhen.load_data,
+                                 openmt15zhen.prepare_data),
+                'trans_enhi': (trans_enhi.load_data,
+                               trans_enhi.prepare_data),
+                'stan': (stan.load_data,
+                         stan.prepare_data)
+                }
 
 
-def get_dataset(name):
-    return datasets[name][0], datasets[name][1]
+def get_data_loader(name):
+    return data_loaders[name][0], data_loaders[name][1]
 
 
 # initialize Theano shared variables according to the initial parameters
@@ -54,12 +60,14 @@ def init_tparams(params):
         tparams[kk] = theano.shared(params[kk], name=kk)
     return tparams
 
+
 def init_params_nll(tparams):
     params_nll = OrderedDict()
     for kk, pp in tparams.iteritems():
-        if not 'adversarial' in kk and not 'FR' in kk:
+        if 'adversarial' not in kk and 'FR' not in kk:
             params_nll[kk] = tparams[kk]
     return params_nll
+
 
 def init_params_adversarial(tparams):
     params_adversarial = OrderedDict()
@@ -70,30 +78,31 @@ def init_params_adversarial(tparams):
 
 def init_params_gen_adversarial(tparams):
     disconnected_params = ['decoder_W_comb_att', 'decoder_U_att',
-                            'decoder_c_tt', 'decoder_Wc_att',
-                            'decoder_b_att', 'Wemb',
-                            'Wemb_dec',
-                            'encoder_W',
-                            'encoder_b',
-                            'encoder_U',
-                            'encoder_Wx',
-                            'encoder_Ux',
-                            'encoder_bx',
-                            'encoder_r_W',
-                            'encoder_r_b',
-                            'encoder_r_U',
-                            'encoder_r_Wx',
-                            'encoder_r_Ux',
-                            'encoder_r_bx',
-                            'ff_state_w',
-                            'ff_state_b']
+                           'decoder_c_tt', 'decoder_Wc_att',
+                           'decoder_b_att', 'Wemb',
+                           'Wemb_dec',
+                           'encoder_W',
+                           'encoder_b',
+                           'encoder_U',
+                           'encoder_Wx',
+                           'encoder_Ux',
+                           'encoder_bx',
+                           'encoder_r_W',
+                           'encoder_r_b',
+                           'encoder_r_U',
+                           'encoder_r_Wx',
+                           'encoder_r_Ux',
+                           'encoder_r_bx',
+                           'ff_state_w',
+                           'ff_state_b']
 
     params_adversarial = OrderedDict()
     for kk, pp in tparams.iteritems():
-        if kk not in disconnected_params and not 'ff_logit' in kk and not 'ff_nb' in kk:
+        if kk not in disconnected_params and 'ff_logit' not in kk and 'ff_nb' not in kk:
             if not 'adversarial' in kk:
                 params_adversarial[kk] = tparams[kk]
     return params_adversarial
+
 
 # load parameters
 def load_params(path, params):
@@ -116,60 +125,70 @@ def init_params(options):
     params['Wemb_dec'] = norm_weight(options['n_words'], options['dim_word'])
 
     # Encoder
-    params = get_layer(options['encoder'])[0](options, params, prefix='encoder',
-                                              nin=options['dim_word'], dim=options['dim'])
+    params = get_layer(options['encoder'])[0](options, params,
+                                              prefix='encoder',
+                                              nin=options['dim_word'],
+                                              dim=options['dim'])
 
     ctxdim = options['dim']
     if not options['decoder'].endswith('simple'):
         ctxdim = options['dim'] * 2
-        params = get_layer(options['encoder'])[0](options, params, prefix='encoder_r',
-                                                  nin=options['dim_word'], dim=options['dim'])
+        params = get_layer(options['encoder'])[0](options, params,
+                                                  prefix='encoder_r',
+                                                  nin=options['dim_word'],
+                                                  dim=options['dim'])
         if options['hiero']:
-            params = get_layer(options['hiero'])[0](options, params, prefix='hiero',
+            params = get_layer(options['hiero'])[0](options, params,
+                                                    prefix='hiero',
                                                     nin=2 * options['dim'],
                                                     dimctx=2 * options['dim'])
     # init_state, init_cell
-    params = get_layer('ff')[0](options, params, prefix='ff_state', nin=ctxdim, nout=options['dim'])
+    params = get_layer('ff')[0](options, params, prefix='ff_state',
+                                nin=ctxdim, nout=options['dim'])
     if options['encoder'] == 'lstm':
-        params = get_layer('ff')[0](options, params, prefix='ff_memory', nin=ctxdim, nout=options['dim'])
+        params = get_layer('ff')[0](options, params, prefix='ff_memory',
+                                    nin=ctxdim, nout=options['dim'])
 
     # decoder: Teacher Forcing Mode
-    params = get_layer(options['decoder'])[0](options, params, prefix='decoder',
-                                              nin=options['dim_word'], dim=options['dim'],
+    params = get_layer(options['decoder'])[0](options, params,
+                                              prefix='decoder',
+                                              nin=options['dim_word'],
+                                              dim=options['dim'],
                                               dimctx=ctxdim)
 
     # readout
-    params = get_layer('ff')[0](options, params, prefix='ff_logit_lstm', nin=options['dim'], nout=options['dim_word'], ortho=False)
-    params = get_layer('ff_nb')[0](options, params, prefix='ff_nb_logit_prev', nin=options['dim_word'], nout=options['dim_word'], ortho=False)
-    params = get_layer('ff_nb')[0](options, params, prefix='ff_nb_logit_ctx', nin=ctxdim, nout=options['dim_word'], ortho=False)
-    params = get_layer('ff')[0](options, params, prefix='ff_logit', nin=options['dim_word'], nout=options['n_words'])
+    params = get_layer('ff')[0](options, params, prefix='ff_logit_lstm',
+                                nin=options['dim'],
+                                nout=options['dim_word'],
+                                ortho=False)
+    params = get_layer('ff_nb')[0](options, params, prefix='ff_nb_logit_prev',
+                                   nin=options['dim_word'],
+                                   nout=options['dim_word'],
+                                   ortho=False)
+    params = get_layer('ff_nb')[0](options, params, prefix='ff_nb_logit_ctx',
+                                   nin=ctxdim,
+                                   nout=options['dim_word'],
+                                   ortho=False)
+    params = get_layer('ff')[0](options, params, prefix='ff_logit',
+                                nin=options['dim_word'],
+                                nout=options['n_words'])
 
-    # decoder: Free Running Mode
-    # params = get_layer(options['decoder_FR'])[0](options, params, prefix='decoder_FR',
-    #                                               nin=options['dim_word'], dim=options['dim'],
-    #                                               dimctx=ctxdim)
-
-    #Adversarial network
+    # Adversarial network
     params = get_layer('gru')[0](options, params, prefix='encoder_adversarial',
-                                       nin=options['dim'], dim=options['dim'])
+                                 nin=options['dim'],
+                                 dim=options['dim'])
 
-    params = get_layer('mlp_adversarial')[0](options, params, prefix='mlp_adversarial',
-                                       nin=options['dim'] * 2, dim=options['dim'] * 2)
+    params = get_layer('mlp_adversarial')[0](options, params,
+                                             prefix='mlp_adversarial',
+                                             nin=options['dim'] * 2,
+                                             dim=options['dim'] * 2)
     return params
 
-def build_discriminator_adversarial(B_orig, B_fake, tparams, options):
-    trng = RandomStreams(1234)
 
-    # description string: #hidden_states x #samples
-    #B_orig = tensor.matrix('B_orig', dtype='float32')
-    #B_fake = tensor.matrix('B_fake', dtype='float32')
-    #h_orig_mask = tensor.matrix('h_orig_mask', dtype='float32')
-    #h_fake_mask = tensor.matrix('h_fake_mask', dtype='float32')
+def build_discriminator_adversarial(B_orig, B_fake, tparams, options):
 
     B_orig_r = B_orig[::-1]
     B_fake_r = B_fake[::-1]
-    #h_orig_r_mask = h_orig_mask[::-1]
-    #h_fake_r_mask = h_fake_mask[::-1]
 
     n_timesteps_orig = B_orig.shape[0]
     n_timesteps_fake = B_fake.shape[0]
@@ -181,50 +200,55 @@ def build_discriminator_adversarial(B_orig, B_fake, tparams, options):
     proj_orig = proj_orig[0]
     proj_fake = proj_fake[0]
 
-    proj_orig_r = encoder(tparams, B_orig_r, options, prefix='encoder_adversarial')
-    proj_fake_r = encoder(tparams, B_fake_r, options, prefix='encoder_adversarial')
+    proj_orig_r = encoder(tparams, B_orig_r, options,
+                          prefix='encoder_adversarial')
+    proj_fake_r = encoder(tparams, B_fake_r, options,
+                          prefix='encoder_adversarial')
     proj_orig_r = proj_orig_r[0]
     proj_fake_r = proj_fake_r[0]
 
-    ctx_mean_orig = concatenate([proj_orig[-1], proj_orig_r[-1]], axis=proj_orig.ndim - 2)
-    ctx_mean_fake = concatenate([proj_fake[-1], proj_fake_r[-1]], axis=proj_orig.ndim - 2)
+    if options['adversarial_mode'] == 'simple':
+        ctx_mean_orig = concatenate([proj_orig[-1], proj_orig_r[-1]],
+                                    axis=proj_orig.ndim - 2)
+        ctx_mean_fake = concatenate([proj_fake[-1], proj_fake_r[-1]],
+                                    axis=proj_orig.ndim - 2)
 
-    D_orig = concatenate([proj_orig, proj_orig_r[::-1]], axis=proj_orig.ndim - 1)
-    D_fake = concatenate([proj_fake, proj_fake_r[::-1]], axis=proj_fake.ndim - 1)
-    #D_orig =
+        D_orig = mlp_layer(tparams, ctx_mean_orig, options,
+                           prefix='mlp_adversarial')
+        D_fake = mlp_layer(tparams, ctx_mean_fake, options,
+                           prefix='mlp_adversarial')
 
-    #mlp_adversarial = get_layer('mlp_adversarial')[1]
+    elif options['adversarial_mode'] == 'complete':
+        D_orig = concatenate([proj_orig, proj_orig_r[::-1]],
+                             axis=proj_orig.ndim - 1)
+        D_fake = concatenate([proj_fake, proj_fake_r[::-1]],
+                             axis=proj_fake.ndim - 1)
 
-    D_orig = mlp_layer(tparams, ctx_mean_orig, options, prefix='mlp_adversarial')
-    D_fake = mlp_layer(tparams, ctx_mean_fake, options, prefix='mlp_adversarial')
+        D_orig = mlp_layer_adversarial(tparams, D_orig, options,
+                                       prefix='mlp_adversarial')
+        D_fake = mlp_layer_adversarial(tparams, D_fake, options,
+                                       prefix='mlp_adversarial')
 
-    # inps = [B_orig, B_fake]
-    # outs = [D_orig, D_fake]
-
-    # discriminator_adversarial = theano.function(inps, outs, name='discriminator_adversarial', profile=profile)
-
-    # return discriminator_adversarial
     return D_orig, D_fake
 
-def build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options):
-    #D_orig = tensor.matrix('D_orig', dtype='float32')
-    #D_fake = tensor.matrix('D_fake', dtype='float32')
-    
-    # Review
-    cost = -tensor.mean(tensor.log(1e-6 + D_orig) + tensor.log(1e-6 + 1. - D_fake))
-    inps = [D_orig, D_fake]
-    outs = [cost]
 
-    #discriminator_adversarial_cost = theano.function(inps, outs, name='discriminator_adversarial_cost', profile=profile)
-    #return discriminator_adversarial_cost
+def build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options):
+    if options['adversarial_mode'] == 'simple':
+        cost = -tensor.mean(tensor.log(1e-6 + D_orig) +
+                            tensor.log(1e-6 + 1. - D_fake))
+    elif options['adversarial_mode'] == 'complete':
+        cost = -tensor.mean(tensor.sum(tensor.log(1e-6 + D_orig), 0) +
+                            tensor.sum(tensor.log(1e-6 + 1. - D_fake), 0))
+
     return cost
 
-def build_adversarial_generator_cost(D_fake,tparams, options):
-    #D_fake = tensor.matrix('D_fake', dtype='float32')
-    cost = -tensor.mean(tensor.log(D_fake + 1e-6))
 
-    #adversarial_generator_cost = theano.function([D_fake], [cost], name='adversarial_generator_cost', profile=profile)
-    #return adversarial_generator_cost
+def build_adversarial_generator_cost(D_fake, tparams, options):
+    if options['adversarial_mode'] == 'simple':
+        cost = -tensor.mean(tensor.log(D_fake + 1e-6))
+    elif options['adversarial_mode'] == 'complete':
+        cost = -tensor.mean(tensor.sum(tensor.log(D_fake + 1e-6), 0))
+
     return cost
 
 
@@ -248,7 +272,9 @@ def build_model(tparams, options):
     n_samples = x.shape[1]
     # src_lengths = x_mask.sum(axis=0)
 
-    emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
+    emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps,
+                                                n_samples,
+                                                options['dim_word']])
     encoder = get_layer(options['encoder'])[1]
 
     proj = encoder(tparams, emb, options, prefix='encoder', mask=x_mask)
@@ -257,9 +283,14 @@ def build_model(tparams, options):
         ctx = proj[0][-1]
         ctx_mean = ctx
     else:
-        embr = tparams['Wemb'][xr.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
+        embr = tparams['Wemb'][xr.flatten()].reshape([n_timesteps,
+                                                      n_samples,
+                                                      options['dim_word']])
+
         encoder_r = get_layer(options['encoder'])[1]
-        projr = encoder_r(tparams, embr, options, prefix='encoder_r', mask=xr_mask)
+        projr = encoder_r(tparams, embr, options,
+                          prefix='encoder_r', mask=xr_mask)
+
         ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim - 1)
         if options['hiero']:
             # ctx = tensor.dot(ctx, tparams['W_hiero'])
@@ -273,17 +304,23 @@ def build_model(tparams, options):
         # ctx_mean = ctx.mean(0)
         # ctx_mean = (ctx * x_mask[:,:,None]).sum(0) / x_mask.sum(0)[:,None]
         # Get the last hidden states from the direct and reversed encoding
-        ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim - 2)
+        ctx_mean = concatenate([proj[0][-1], projr[0][-1]],
+                               axis=proj[0].ndim - 2)
 
     ff_encoder_decoder = get_layer('ff')[1]
-    init_state = ff_encoder_decoder(tparams, ctx_mean, options, prefix='ff_state', activ='tanh')
+    init_state = ff_encoder_decoder(tparams, ctx_mean, options,
+                                    prefix='ff_state', activ='tanh')
     init_memory = None
 
     if options['encoder'] == 'lstm':
-        init_memory = get_layer('ff')[1](tparams, ctx_mean, options, prefix='ff_memory', activ='tanh')
+        init_memory = get_layer('ff')[1](tparams, ctx_mean, options,
+                                         prefix='ff_memory', activ='tanh')
 
     # word embedding (target)
-    emb = tparams['Wemb_dec'][y.flatten()].reshape([n_timesteps_trg, n_samples, options['dim_word']])
+    emb = tparams['Wemb_dec'][y.flatten()].reshape([n_timesteps_trg,
+                                                    n_samples,
+                                                    options['dim_word']])
+
     emb_shifted = tensor.zeros_like(emb)
     emb_shifted = tensor.set_subtensor(emb_shifted[1:], emb[:-1])
     emb = emb_shifted
@@ -309,8 +346,8 @@ def build_model(tparams, options):
     # Decoder in Free Running mode
     decoder_FR = get_layer(options['decoder_FR'])[1]
     proj_FR = decoder_FR(tparams, emb, options, prefix='decoder', mask=y_mask,
-                      context=ctx, context_mask=x_mask, one_step=False,
-                      init_state=init_state, init_memory=init_memory)
+                         context=ctx, context_mask=x_mask, one_step=False,
+                         init_state=init_state, init_memory=init_memory)
     proj_h_FR = proj_FR[0]
 
     if options['decoder'].endswith('simple'):
@@ -325,16 +362,26 @@ def build_model(tparams, options):
     B_free_running = proj_FR[3]
 
     # compute word probabilities
-    logit_lstm = get_layer('ff')[1](tparams, proj_h, options, prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_layer('ff_nb')[1](tparams, emb, options, prefix='ff_nb_logit_prev', activ='linear')
-    logit_ctx = get_layer('ff_nb')[1](tparams, ctxs, options, prefix='ff_nb_logit_ctx', activ='linear')
+    logit_lstm = get_layer('ff')[1](tparams, proj_h, options,
+                                    prefix='ff_logit_lstm',
+                                    activ='linear')
+    logit_prev = get_layer('ff_nb')[1](tparams, emb, options,
+                                       prefix='ff_nb_logit_prev',
+                                       activ='linear')
+    logit_ctx = get_layer('ff_nb')[1](tparams, ctxs, options,
+                                      prefix='ff_nb_logit_ctx',
+                                      activ='linear')
 
     logit = tensor.tanh(logit_lstm + logit_prev + logit_ctx)
-    logit = get_layer('ff')[1](tparams, logit, options, prefix='ff_logit', activ='linear')
+
+    logit = get_layer('ff')[1](tparams, logit, options,
+                               prefix='ff_logit',
+                               ctiv='linear')
 
     logit_shp = logit.shape
 
-    probs = tensor.nnet.softmax(logit.reshape([logit_shp[0] * logit_shp[1], logit_shp[2]]))
+    probs = tensor.nnet.softmax(logit.reshape([logit_shp[0] * logit_shp[1],
+                                               logit_shp[2]]))
 
     # cost
     y_flat = y.flatten()
@@ -345,22 +392,18 @@ def build_model(tparams, options):
     cost = (cost * y_mask).sum(0)
 
     # Adversarial step
-    #D_adversarial = build_discriminator_adversarial(tparams, options)
-    D_orig, D_fake = build_discriminator_adversarial(B_teacher_forcing, B_free_running, tparams, options)
-    #D_orig, D_fake = D_adversarial(B_teacher_forcing, B_free_running)
-    # inps = [B_orig, B_fake]
-    # outs = [D_orig, D_fake]
-    #copute_cost_discriminator = build_adversarial_discriminator_cost(tparams, options)
-    cost_discriminator = build_adversarial_discriminator_cost(D_orig, D_fake, tparams, options)
-    # inps = [D_orig, D_fake]
-    # outs = [cost]
-    #cost_discriminator = compute_cost_discriminator(D_orig, D_fake)
+    D_orig, D_fake = build_discriminator_adversarial(B_teacher_forcing,
+                                                     B_free_running,
+                                                     tparams, options)
 
-    # compute_cost_generator = build_adversarial_generator_cost(tparams, options)
-    # cost_generator = compute_cost_generator(D_fake)
-    cost_generator = build_adversarial_generator_cost(D_fake,tparams, options)
+    cost_discriminator = build_adversarial_discriminator_cost(D_orig, D_fake,
+                                                              tparams, options)
+    cost_generator = build_adversarial_generator_cost(D_fake,
+                                                      tparams, options)
 
-    return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, cost_discriminator, cost_generator, B_teacher_forcing, B_free_running, D_orig, D_fake
+    return (trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost,
+            cost_discriminator, cost_generator, B_teacher_forcing,
+            B_free_running, D_orig, D_fake)
 
 
 # build a sampler
@@ -371,29 +414,37 @@ def build_sampler(tparams, options, trng):
     n_samples = x.shape[1]
 
     # word embedding (source)
-    emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
-    embr = tparams['Wemb'][xr.flatten()].reshape([n_timesteps, n_samples, options['dim_word']])
+    emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps, n_samples,
+                                                options['dim_word']])
+    embr = tparams['Wemb'][xr.flatten()].reshape([n_timesteps, n_samples,
+                                                  options['dim_word']])
 
     # encoder
-    proj = get_layer(options['encoder'])[1](tparams, emb, options, prefix='encoder')
+    proj = get_layer(options['encoder'])[1](tparams, emb, options,
+                                            prefix='encoder')
 
     if options['decoder'].endswith('simple'):
         ctx = proj[0][-1]
         ctx_mean = ctx
     else:
-        projr = get_layer(options['encoder'])[1](tparams, embr, options, prefix='encoder_r')
+        projr = get_layer(options['encoder'])[1](tparams, embr, options,
+                                                 prefix='encoder_r')
         ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim - 1)
         if options['hiero']:
-            rval = get_layer(options['hiero'])[1](tparams, ctx, options, prefix='hiero')
+            rval = get_layer(options['hiero'])[1](tparams, ctx, options,
+                                                  prefix='hiero')
             ctx = rval[0]
         # initial state/cell
         # ctx_mean = ctx.mean(0)
-        ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim - 2)
+        ctx_mean = concatenate([proj[0][-1], projr[0][-1]],
+                               axis=proj[0].ndim - 2)
 
-    init_state = get_layer('ff')[1](tparams, ctx_mean, options, prefix='ff_state', activ='tanh')
+    init_state = get_layer('ff')[1](tparams, ctx_mean, options,
+                                    prefix='ff_state', activ='tanh')
 
     if options['encoder'] == 'lstm':
-        init_memory = get_layer('ff')[1](tparams, ctx_mean, options, prefix='ff_memory', activ='tanh')
+        init_memory = get_layer('ff')[1](tparams, ctx_mean, options,
+                                         prefix='ff_memory', activ='tanh')
 
     print 'Building f_init...',
     outs = [init_state, ctx]
@@ -416,7 +467,8 @@ def build_sampler(tparams, options, trng):
     n_timesteps = ctx.shape[0]
 
     # if it's the first word, emb should be all zero
-    emb = tensor.switch(y[:, None] < 0, tensor.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
+    emb = tensor.switch(y[:, None] < 0,
+                        tensor.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
                         tparams['Wemb_dec'][y])
 
     proj = get_layer(options['decoder'])[1](tparams, emb, options,
@@ -436,13 +488,21 @@ def build_sampler(tparams, options, trng):
             next_memory = proj[1]
             ctxs = proj[2]
 
-    logit_lstm = get_layer('ff')[1](tparams, next_state, options, prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_layer('ff_nb')[1](tparams, emb, options, prefix='ff_nb_logit_prev', activ='linear')
-    logit_ctx = get_layer('ff_nb')[1](tparams, ctxs, options, prefix='ff_nb_logit_ctx', activ='linear')
+    logit_lstm = get_layer('ff')[1](tparams, next_state, options,
+                                    prefix='ff_logit_lstm',
+                                    activ='linear')
+    logit_prev = get_layer('ff_nb')[1](tparams, emb, options,
+                                       prefix='ff_nb_logit_prev',
+                                       activ='linear')
+    logit_ctx = get_layer('ff_nb')[1](tparams, ctxs, options,
+                                      prefix='ff_nb_logit_ctx',
+                                      activ='linear')
 
     logit = tensor.tanh(logit_lstm + logit_prev + logit_ctx)
 
-    logit = get_layer('ff')[1](tparams, logit, options, prefix='ff_logit', activ='linear')
+    logit = get_layer('ff')[1](tparams, logit, options,
+                               prefix='ff_logit',
+                               activ='linear')
     next_probs = tensor.nnet.softmax(logit)
     next_sample = trng.multinomial(pvals=next_probs).argmax(1)
 
@@ -462,6 +522,7 @@ def build_sampler(tparams, options, trng):
 
 # generate sample
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30, minlen=-1, stochastic=True, argmax=False):
+
     if k > 1:
         assert not stochastic, 'Beam search does not support stochastic sampling'
 
@@ -491,8 +552,9 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30, m
         if options['decoder'].endswith('simple'):
             ctx = numpy.tile(ctx0, [live_k, 1])
         else:
-            ctx = numpy.tile(ctx0.reshape((ctx0.shape[0],ctx0.shape[2])), 
-                                          [live_k, 1, 1]).transpose((1,0,2))
+            ctx = numpy.tile(ctx0.reshape((ctx0.shape[0], ctx0.shape[2])),
+                             [live_k, 1, 1]).transpose((1, 0, 2))
+
         inps = [next_w, ctx, next_state]
         if options['decoder'].startswith('lstm'):
             inps += [next_memory]
@@ -510,13 +572,13 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30, m
             else:
                 nw = next_w[0]
             sample.append(nw)
-            sample_score += next_p[0,nw]
+            sample_score += next_p[0, nw]
             if nw == 0:
                 break
         else:
-            cand_scores = hyp_scores[:,None] - numpy.log(next_p)
+            cand_scores = hyp_scores[:, None] - numpy.log(next_p)
             cand_flat = cand_scores.flatten()
-            ranks_flat = cand_flat.argsort()[:(k-dead_k)]
+            ranks_flat = cand_flat.argsort()[:(k - dead_k)]
 
             voc_size = next_p.shape[1]
             trans_indices = ranks_flat / voc_size
@@ -524,13 +586,13 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30, m
             costs = cand_flat[ranks_flat]
 
             new_hyp_samples = []
-            new_hyp_scores = numpy.zeros(k-dead_k).astype('float32')
+            new_hyp_scores = numpy.zeros(k - dead_k).astype('float32')
             new_hyp_states = []
             if options['decoder'].startswith('lstm'):
                 new_hyp_memories = []
 
             for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
-                new_hyp_samples.append(hyp_samples[ti]+[wi])
+                new_hyp_samples.append(hyp_samples[ti] + [wi])
                 new_hyp_scores[idx] = copy.copy(costs[idx])
                 new_hyp_states.append(copy.copy(next_state[ti]))
                 if options['decoder'].startswith('lstm'):
@@ -577,8 +639,8 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30, m
                 sample.append(hyp_samples[idx])
                 sample_score.append(hyp_scores[idx])
 
-
     return sample, sample_score
+
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     probs = []
@@ -589,19 +651,22 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True):
     for x, y in iterator:
         n_done += len(x)
 
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=50, n_words_src=options['n_words_src'], n_words=options['n_words'])
-        
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=50,
+                                            n_words_src=options['n_words_src'],
+                                            n_words=options['n_words'])
+
         if x is None:
             continue
 
-        pprobs = f_log_probs(x,x_mask,y,y_mask)
+        pprobs = f_log_probs(x, x_mask, y, y_mask)
         for pp in pprobs:
             probs.append(pp)
 
         if verbose:
-            print >> sys.stderr, '%d samples computed'%(n_done)
+            print >> sys.stderr, '{} samples computed'.format(n_done)
 
     return numpy.array(probs)
+
 
 def clip_gradients(clip_c, grads):
     # Cliping gradients
@@ -614,13 +679,9 @@ def clip_gradients(clip_c, grads):
             new_grads.append(tensor.switch(g2 > (clip_c**2),
                                            g / tensor.sqrt(g2) * clip_c,
                                            g))
-        #new_grads_2 = []    
-        #for g in new_grads:
-        #    new_grads_2.append(tensor.switch(g < (g * 0. + 1e-8),
-        #                       g * 0., g))
-
         return new_grads
     return grads
+
 
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
@@ -643,21 +704,19 @@ def train(dim_word=100,  # word vector dimensionality
           saveto='saved_models/model.npz',
           validFreq=1000,
           saveFreq=1000,  # save the parameters after every saveFreq updates
-          sampleFreq=100,  # generate some samples after every sampleFreq updates
-          dataset='wmt14enfr',
+          sampleFreq=100,  # generate samples after every sampleFreq updates
+          data_loader='wmt14enfr',
           dictionary=None,  # word dictionary
           dictionary_src=None,  # word dictionary
           use_dropout=False,
           reload_=False,    # Contains the name of the file to reload or false
           correlation_coeff=0.1,
-          clip_c=0.):
+          clip_c=0.,
+          adversarial_mode='simple'):
 
     model_options = copy.copy(inspect.currentframe().f_locals)
     model_options['decoder_FR'] = 'gru_cond_FR'
-    #model_options['encoder_adversarial'] = 'gru_w_mlp'
-    # model_options = locals().copy()
 
-        # reload options
     if reload_:
         with open('{}.npz.pkl'.format(reload_), 'rb') as f:
             saved_options = pkl.load(f)
@@ -670,10 +729,8 @@ def train(dim_word=100,  # word vector dimensionality
             word_dict_src, word_idict_src = load_dictionary(model_options['dictionary_src'])
 
     print 'Loading data'
-    load_data, prepare_data = get_dataset(dataset)
+    load_data, prepare_data = get_data_loader(data_loader)
     train, valid, test = load_data(batch_size=batch_size)
-
-
 
     print 'Building model'
     params = init_params(model_options)
@@ -711,24 +768,24 @@ def train(dim_word=100,  # word vector dimensionality
 
     if alpha_c > 0. and not model_options['decoder'].endswith('simple'):
         alpha_c = theano.shared(numpy.float32(alpha_c), name='alpha_c')
-        alpha_reg = alpha_c * ((tensor.cast(y_mask.sum(0) // x_mask.sum(0), 'float32')[:, None] -
+        alpha_reg = alpha_c * ((tensor.cast(y_mask.sum(0) // x_mask.sum(0),
+                                'float32')[:, None] -
                                 opt_ret['dec_alphas'].sum(0))**2).sum(1).mean()
         cost += alpha_reg
 
     # after any regularizer
     print 'Building f_cost...',
-    #f_cost = theano.function(inps, cost, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    #f_cost_discriminator = theano.function(inps, cost_discriminator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    #f_cost_generator = theano.function(inps_gen_adversarial, cost_generator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
     f_cost = theano.function(inps, cost, profile=profile)
     f_cost_discriminator = theano.function(inps, cost_discriminator, profile=profile)
-    f_cost_generator = theano.function(inps_gen_adversarial, cost_generator, profile=profile)
+    f_cost_generator = theano.function(inps_gen_adversarial, cost_generator,
+                                       profile=profile)
 
     print 'Done'
 
     if model_options['hiero'] is not None:
         print 'Building f_beta...',
-        f_beta = theano.function([x, x_mask], opt_ret['hiero_betas'], profile=profile)
+        f_beta = theano.function([x, x_mask], opt_ret['hiero_betas'],
+                                 profile=profile)
         print 'Done'
 
     print 'Computing gradient...',
@@ -737,18 +794,18 @@ def train(dim_word=100,  # word vector dimensionality
     params_gen_adversarial = init_params_gen_adversarial(tparams)
 
     grads = tensor.grad(cost, wrt=itemlist(params_nll))
-    grads_discriminator = tensor.grad(cost_discriminator, wrt=itemlist(params_adversarial))
-    grads_generator = tensor.grad(cost_generator, wrt=itemlist(params_gen_adversarial))
+    grads_discriminator = tensor.grad(cost_discriminator,
+                                      wrt=itemlist(params_adversarial))
+    grads_generator = tensor.grad(cost_generator,
+                                  wrt=itemlist(params_gen_adversarial))
     print 'Done'
-    #print 'Building f_grad...',
-    #f_grad = theano.function(inps, grads, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    #f_grad_discriminator = theano.function(inps, grads_discriminator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
-    #f_grad_generator = theano.function(inps_gen_adversarial, grads_generator, profile=profile, mode=NanGuardMode(nan_is_error=True, inf_is_error=True, big_is_error=True))
+    print 'Building f_grad...',
     f_grad = theano.function(inps, grads, profile=profile)
     f_grad_discriminator = theano.function(inps, grads_discriminator, profile=profile)
     f_grad_generator = theano.function(inps_gen_adversarial, grads_generator, profile=profile)
 
-    #print 'Done'
+    print 'Done'
+
     print('clip_c: {}'.format(clip_c))
     grads = clip_gradients(clip_c, grads)
     grads_discriminator = clip_gradients(clip_c, grads_discriminator)
@@ -757,14 +814,19 @@ def train(dim_word=100,  # word vector dimensionality
     lr = tensor.scalar(name='lr')
     lr_discriminator = tensor.scalar(name='lr_discriminator')
     lr_generator = tensor.scalar(name='lr_generator')
-    print 'Building optimizers...',
-    # f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
-    f_update = eval(optimizer)(lr, params_nll, grads, inps, cost)
-    f_update_discriminator = eval(optimizer)(lr_discriminator, params_adversarial, grads_discriminator, inps, cost_discriminator)
-    f_update_generator = eval(optimizer)(lr_generator, params_gen_adversarial, grads_generator, inps_gen_adversarial, cost_generator)
 
-    #BUILD ADVERSARIAL OPTIMIZER
-    # f_update_adversarial = eval(optimizer)(lr, tparams, grads_adversarial, cost_adversarial)
+    print 'Building optimizers...',
+    f_update = eval(optimizer)(lr, params_nll, grads, inps, cost)
+
+    f_update_discriminator = eval(optimizer)(lr_discriminator,
+                                             params_adversarial,
+                                             grads_discriminator,
+                                             inps, cost_discriminator)
+    f_update_generator = eval(optimizer)(lr_generator,
+                                         params_gen_adversarial,
+                                         grads_generator,
+                                         inps_gen_adversarial, cost_generator)
+
     print 'Done'
 
     print 'Optimization'
@@ -785,7 +847,7 @@ def train(dim_word=100,  # word vector dimensionality
         sampleFreq = len(train[0]) / batch_size
 
     if reload_:
-        model_name = reload_.split('/')[-1] 
+        model_name = reload_.split('/')[-1]
         uidx = int(model_name.split('_')[1][5:])
         eidx_start = int(model_name.split('_')[0][5:])
     else:
@@ -807,7 +869,8 @@ def train(dim_word=100,  # word vector dimensionality
             use_noise.set_value(1.)
 
             x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen,
-                                                n_words_src=n_words_src, n_words=n_words)
+                                                n_words_src=n_words_src,
+                                                n_words=n_words)
 
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
@@ -815,6 +878,7 @@ def train(dim_word=100,  # word vector dimensionality
                 continue
 
             ud_start = time.time()
+
             '''
             c = f_cost(x, x_mask, y, y_mask)
             cd = f_cost_discriminator(x, x_mask, y, y_mask)
@@ -826,8 +890,6 @@ def train(dim_word=100,  # word vector dimensionality
             g = f_grad(x, x_mask, y, y_mask)
             gd = f_grad_discriminator(x, x_mask, y, y_mask)
             gg = f_grad_generator(x, x_mask, y)
-            print numpy.array([numpy.isnan(a).sum() for a in g]).sum() + numpy.array([numpy.isnan(a).sum() for a in gd]).sum() + numpy.array([numpy.isnan(a).sum() for a in gg]).sum()
-            rint numpy.array([numpy.isinf(a).sum() for a in g]).sum() + numpy.array([numpy.isinf(a).sum() for a in gd]).sum() + numpy.array([numpy.isinf(a).sum() for a in gg]).sum()
             '''
 
             cost = f_update(x, x_mask, y, y_mask, lrate)
@@ -835,7 +897,8 @@ def train(dim_word=100,  # word vector dimensionality
             discriminator_accuracy = ((D_fake < 0.5).sum() + (D_orig > 0.5).sum()) / (1.0 * (D_fake.size + D_orig.size))
 
             if discriminator_accuracy < 0.95:
-                cost_discriminator = f_update_discriminator(x, x_mask, y, y_mask, lrate)
+                cost_discriminator = f_update_discriminator(x, x_mask, y,
+                                                            y_mask, lrate)
             if discriminator_accuracy > 0.75:
                 cost_generator = f_update_generator(x, x_mask, y, lrate)
             ud = time.time() - ud_start
@@ -852,8 +915,10 @@ def train(dim_word=100,  # word vector dimensionality
 
             if numpy.mod(uidx, dispFreq) == 0:
                 print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud
-                print 'Cost Discriminator: {}, Cost Generator: {}'.format(cost_discriminator, cost_generator)
-                print 'Accuracy discriminator: {}'.format(discriminator_accuracy)
+                print 'Cost Discriminator: {}, Cost Generator: {}'\
+                    .format(cost_discriminator, cost_generator)
+                print 'Accuracy discriminator: {}'\
+                    .format(discriminator_accuracy)
 
             if numpy.mod(uidx, saveFreq) == 0:
                 print 'Saving...',
@@ -866,7 +931,9 @@ def train(dim_word=100,  # word vector dimensionality
                 params = unzip(tparams)
 
                 saveto_list = saveto.split('/')
-                saveto_list[-1] = 'epoch' + str(eidx) + '_' + 'nbUpd' + str(uidx) + '_' + saveto_list[-1]
+                saveto_list[-1] = 'epoch{}_nbUpd{}_'.format(eidx, uidx)\
+                                  + saveto_list[-1]
+                #saveto_list[-1] = 'epoch' + str(eidx) + '_' + 'nbUpd' + str(uidx) + '_' + saveto_list[-1]
                 saveName = '/'.join(saveto_list)
                 numpy.savez(saveName, history_errs=history_errs, **params)
                 print model_options
@@ -878,9 +945,13 @@ def train(dim_word=100,  # word vector dimensionality
                 # FIXME: random selection?
                 for jj in xrange(numpy.minimum(5, x.shape[1])):
                     stochastic = False
-                    sample, score = gen_sample(tparams, f_init, f_next, x[:, jj][:, None],
-                                               model_options, trng=trng, k=1, maxlen=30,
-                                               stochastic=stochastic, argmax=True)
+                    sample, score = gen_sample(tparams, f_init, f_next,
+                                               x[:, jj][:, None],
+                                               model_options, trng=trng,
+                                               k=1, maxlen=30,
+                                               stochastic=stochastic,
+                                               argmax=True)
+
                     print 'Source ', jj, ': ',
                     for vv in x[:, jj]:
                         if vv == 0:
@@ -900,7 +971,8 @@ def train(dim_word=100,  # word vector dimensionality
                             print 'UNK',
                     print
                     if model_options['hiero']:
-                        betas = f_beta(x[:, jj][:, None], x_mask[:, jj][:, None])
+                        betas = f_beta(x[:, jj][:, None],
+                                       x_mask[:, jj][:, None])
                         print 'Validity ', jj, ': ',
                         for vv, bb in zip(y[:, jj], betas[:, 0]):
                             if vv == 0:
@@ -934,9 +1006,11 @@ def train(dim_word=100,  # word vector dimensionality
 
                 # train_err = pred_error(f_pred, prepare_data, train, kf)
                 if valid is not None:
-                    valid_err = pred_probs(f_log_probs, prepare_data, model_options, valid).mean()
+                    valid_err = pred_probs(f_log_probs, prepare_data,
+                                           model_options, valid).mean()
                 if test is not None:
-                    test_err = pred_probs(f_log_probs, prepare_data, model_options, test).mean()
+                    test_err = pred_probs(f_log_probs, prepare_data,
+                                          model_options, test).mean()
 
                 history_errs.append([valid_err, test_err])
 
@@ -950,7 +1024,9 @@ def train(dim_word=100,  # word vector dimensionality
                         estop = True
                         break
 
-                print 'Train ', train_err, 'Valid ', valid_err, 'Test ', test_err
+                print 'Train {} Valid {} Test {}'.format(train_err,
+                                                         valid_err,
+                                                         test_err)
 
                 print 'Seen %d samples' % n_samples
 
@@ -961,18 +1037,20 @@ def train(dim_word=100,  # word vector dimensionality
         if estop:
             break
 
-    if best_p is not None: 
+    if best_p is not None:
         zipp(best_p, tparams)
 
     use_noise.set_value(0.)
     train_err = 0
     valid_err = 0
     test_err = 0
-    #train_err = pred_error(f_pred, prepare_data, train, kf)
+
     if valid is not None:
-        valid_err = pred_probs(f_log_probs, prepare_data, model_options, valid).mean()
+        valid_err = pred_probs(f_log_probs, prepare_data,
+                               model_options, valid).mean()
     if test is not None:
-        test_err = pred_probs(f_log_probs, prepare_data, model_options, test).mean()
+        test_err = pred_probs(f_log_probs, prepare_data,
+                              model_options, test).mean()
 
     print 'Train ', train_err, 'Valid ', valid_err, 'Test ', test_err
 
@@ -980,12 +1058,14 @@ def train(dim_word=100,  # word vector dimensionality
         params = copy.copy(best_p)
     else:
         params = unzip(tparams)
-    numpy.savez(saveto, zipped_params=best_p, train_err=train_err,
-                valid_err=valid_err, test_err=test_err, history_errs=history_errs,
+    numpy.savez(saveto, zipped_params=best_p,
+                train_err=train_err,
+                valid_err=valid_err,
+                test_err=test_err,
+                history_errs=history_errs,
                 **params)
 
     return train_err, valid_err, test_err
-
 
 
 if __name__ == '__main__':
@@ -1007,14 +1087,15 @@ if __name__ == '__main__':
           optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
-          saveto='./saved_models/fr-en/pretrained_adversarial_simple/vocab50/model.npz',
+          saveto='./saved_models/fr-en/adversarial_complete/reload_from_exp2/model.npz',
           validFreq=1000,
-          saveFreq=1000,
-          sampleFreq=100,
-          dataset='stan',
+          saveFreq=10000,
+          sampleFreq=1000,
+          data_loader='stan',
           dictionary='../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl',
           dictionary_src='../data/vocab_and_data_small_europarl_v7_enfr/vocab.fr.pkl',
           use_dropout=False,
           reload_='./saved_models/fr-en/baseline/vocab50/epoch8_nbUpd130000_model',
           correlation_coeff=0.1,
-          clip_c=1.)
+          clip_c=1.,
+          adversarial_mode='complete')
