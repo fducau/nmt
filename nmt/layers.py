@@ -12,11 +12,13 @@ layers = {'ff': ('param_init_fflayer', 'fflayer'),
           'lstm': ('param_init_lstm', 'lstm_layer'),
           'lstm_cond': ('param_init_lstm_cond', 'lstm_cond_layer'),
           'gru': ('param_init_gru', 'gru_layer'),
-          'mlp_adversarial':('param_init_mlp_adversarial', 'mlp_layer_adversarial'),
+          'mlp_adversarial': ('param_init_mlp_adversarial',
+                              'mlp_layer_adversarial'),
           'gru_w_mlp': ('param_init_gru_w_mlp', 'gru_layer_w_mlp'),
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
-          'gru_cond_FR': ('param_init_gru_cond', 'gru_cond_layer_FR'), # VERIFY that param_init_gru_cond can be reused
-          'gru_cond_simple': ('param_init_gru_cond_simple', 'gru_cond_simple_layer'),
+          'gru_cond_FR': ('param_init_gru_cond', 'gru_cond_layer_FR'),  # VERIFY that param_init_gru_cond can be reused
+          'gru_cond_simple': ('param_init_gru_cond_simple',
+                              'gru_cond_simple_layer'),
           'gru_hiero': ('param_init_gru_hiero', 'gru_hiero_layer'),
           'rnn': ('param_init_rnn', 'rnn_layer'),
           'rnn_cond': ('param_init_rnn_cond', 'rnn_cond_layer'),
@@ -56,36 +58,47 @@ def param_init_fflayer(options, params, prefix='ff', nin=None, nout=None, ortho=
         nin = options['dim_proj']
     if nout is None:
         nout = options['dim_proj']
-    params[prefix_append(prefix,'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
-    params[prefix_append(prefix,'b')] = numpy.zeros((nout,)).astype('float32')
+    params[prefix_append(prefix, 'W')] = norm_weight(nin, nout,
+                                                     scale=0.01,
+                                                     ortho=ortho)
+    params[prefix_append(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
 
     return params
 
 
-def fflayer(tparams, state_below, options, prefix='rconv', activ='lambda x: tensor.tanh(x)', **kwargs):
-    return eval(activ)(tensor.dot(state_below,
-                                  tparams[prefix_append(prefix, 'W')]) + tparams[prefix_append(prefix, 'b')])
+def fflayer(tparams, state_below, options, prefix='rconv',
+            activ='lambda x: tensor.tanh(x)', **kwargs):
+    W = tparams[prefix_append(prefix, 'W')]
+    b = tparams[prefix_append(prefix, 'b')]
+    return eval(activ)(tensor.dot(state_below, W) + b)
 
 
 # feedforward layer with no bias: affine transformation + point-wise nonlinearity
-def param_init_fflayer_nb(options, params, prefix='ff_nb', nin=None, nout=None, ortho=True):
+def param_init_fflayer_nb(options, params, prefix='ff_nb',
+                          nin=None, nout=None, ortho=True):
     if nin is None:
         nin = options['dim_proj']
     if nout is None:
         nout = options['dim_proj']
-    params[prefix_append(prefix,'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    params[prefix_append(prefix, 'W')] = norm_weight(nin, nout,
+                                                     scale=0.01,
+                                                     ortho=ortho)
 
     return params
 
 
-def fflayer_nb(tparams, state_below, options, prefix='ff_nb', activ='lambda x: tensor.tanh(x)', **kwargs):
-    return eval(activ)(tensor.dot(state_below, tparams[prefix_append(prefix, 'W')]))
+def fflayer_nb(tparams, state_below, options, prefix='ff_nb',
+               activ='lambda x: tensor.tanh(x)', **kwargs):
+
+    W = tparams[prefix_append(prefix, 'W')]
+    return eval(activ)(tensor.dot(state_below, W))
 
 
 # RNN LAYERS
 ###############
 # GRU layer
-def param_init_gru(options, params, prefix='gru', nin=None, dim=None, hiero=False):
+def param_init_gru(options, params, prefix='gru',
+                   nin=None, dim=None, hiero=False):
     if nin is None:
         nin = options['dim_proj']
     if dim is None:
@@ -97,6 +110,7 @@ def param_init_gru(options, params, prefix='gru', nin=None, dim=None, hiero=Fals
 
         params[prefix_append(prefix, 'W')] = W
         params[prefix_append(prefix, 'b')] = numpy.zeros((2 * dim,)).astype('float32')
+
     U = numpy.concatenate([ortho_weight(dim),
                            ortho_weight(dim)], axis=1)
     params[prefix_append(prefix, 'U')] = U
@@ -109,7 +123,10 @@ def param_init_gru(options, params, prefix='gru', nin=None, dim=None, hiero=Fals
 
     return params
 
-def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
+
+def gru_layer(tparams, state_below, options, prefix='gru',
+              mask=None, **kwargs):
+
     nsteps = state_below.shape[0]
     if state_below.ndim == 3:
         n_samples = state_below.shape[1]
@@ -123,11 +140,17 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
 
     def _slice(_x, n, dim):
         if _x.ndim == 3:
-            return _x[:, :, n*dim:(n+1)*dim]
-        return _x[:, n*dim:(n+1)*dim]
+            return _x[:, :, n * dim:(n + 1) * dim]
+        return _x[:, n * dim:(n + 1) * dim]
 
-    state_below_ = tensor.dot(state_below, tparams[prefix_append(prefix, 'W')]) + tparams[prefix_append(prefix, 'b')]
-    state_belowx = tensor.dot(state_below, tparams[prefix_append(prefix, 'Wx')]) + tparams[prefix_append(prefix, 'bx')]
+    W = tparams[prefix_append(prefix, 'W')]
+    b = tparams[prefix_append(prefix, 'b')]
+    state_below_ = tensor.dot(state_below, W) + b
+
+    Wx = tparams[prefix_append(prefix, 'Wx')]
+    bx = tparams[prefix_append(prefix, 'bx')]
+    state_belowx = tensor.dot(state_below, Wx) + bx
+
     U = tparams[prefix_append(prefix, 'U')]
     Ux = tparams[prefix_append(prefix, 'Ux')]
 
@@ -146,7 +169,7 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
         h = u * h_ + (1. - u) * h
         h = m_[:, None] * h + (1. - m_)[:, None] * h_
 
-        return h  #, r, u, preact, preactx
+        return h
 
     seqs = [mask, state_below_, state_belowx]
     _step = _step_slice
@@ -163,7 +186,8 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
     rval = [rval]
     return rval
 
-def param_init_gru_w_mlp(options, params, prefix='gru', nin=None, dim=None, hiero=False):
+def param_init_gru_w_mlp(options, params, prefix='gru',
+                         nin=None, dim=None, hiero=False):
     if nin is None:
         nin = options['dim_proj']
     if dim is None:
@@ -190,13 +214,16 @@ def param_init_gru_w_mlp(options, params, prefix='gru', nin=None, dim=None, hier
     params = get_layer('ff')[0](options, params, prefix=prefix + '_ff_out', nin=options['dim'] * 2, nout=1, ortho=False)
     return params
 
+
 def param_init_mlp_adversarial(options, params, prefix='mlp_adversarial', nin=None, dim=None, hiero=False):
     params = get_layer('ff')[0](options, params, prefix=prefix + '_ff1', nin=options['dim'] * 2, nout=options['dim'] * 2, ortho=False)
     params = get_layer('ff')[0](options, params, prefix=prefix + '_ff2', nin=options['dim'] * 2, nout=options['dim'] * 2, ortho=False)
     params = get_layer('ff')[0](options, params, prefix=prefix + '_ff_out', nin=options['dim'] * 2, nout=1, ortho=False)
     return params
 
-def mlp_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
+
+def mlp_layer(tparams, state_below, options, prefix='gru',
+              mask=None, **kwargs):
     Wff1 = tparams[prefix_append(prefix + '_ff1', 'W')]
     bff1 = tparams[prefix_append(prefix + '_ff1', 'b')]
     out = relu(tensor.dot(state_below, Wff1) + bff1)
@@ -212,7 +239,8 @@ def mlp_layer(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
     return out
 
 
-def mlp_layer_adversarial(tparams, state_below, options, prefix='gru', mask=None, **kwargs):
+def mlp_layer_adversarial(tparams, state_below, options, prefix='gru',
+                          mask=None, **kwargs):
     nsteps = state_below.shape[0]
     if state_below.ndim == 3:
         n_samples = state_below.shape[1]
@@ -224,7 +252,6 @@ def mlp_layer_adversarial(tparams, state_below, options, prefix='gru', mask=None
     if mask is None:
         mask = tensor.alloc(1., state_below.shape[0], 1)
 
-
     def _step_slice(m_, x_, out_,
                     Wff1, bff1, Wff2, bff2,
                     Wffout, bffout):
@@ -232,10 +259,9 @@ def mlp_layer_adversarial(tparams, state_below, options, prefix='gru', mask=None
         out = tanh(tensor.dot(x_, Wff1) + bff1)
         out = tanh(tensor.dot(out, Wff2) + bff2)
         out = sigmoid(tensor.dot(out, Wffout) + bffout)
-        #out = tensor.log(out)
         out = out[:, 0]
 
-        return out  #, r, u, preact, preactx
+        return out
 
     seqs = [mask, state_below]
     shared_vars = [tparams[prefix_append(prefix + '_ff1', 'W')],
@@ -248,18 +274,20 @@ def mlp_layer_adversarial(tparams, state_below, options, prefix='gru', mask=None
     _step = _step_slice
 
     out, updates = theano.scan(_step,
-                                sequences=seqs,
-                                outputs_info=[tensor.alloc(0., n_samples)],
-                                non_sequences=shared_vars,
-                                name=prefix_append(prefix, '_layers'),
-                                n_steps=nsteps,
-                                profile=profile,
-                                strict=True)
+                               sequences=seqs,
+                               outputs_info=[tensor.alloc(0., n_samples)],
+                               non_sequences=shared_vars,
+                               name=prefix_append(prefix, '_layers'),
+                               n_steps=nsteps,
+                               profile=profile,
+                               strict=True)
 
     return out
 
+
 # Conditional GRU layer with Attention
-def param_init_gru_cond(options, params, prefix='gru_cond', nin=None, dim=None, dimctx=None):
+def param_init_gru_cond(options, params, prefix='gru_cond',
+                        nin=None, dim=None, dimctx=None):
     if nin is None:
         nin = options['dim']
     if dim is None:
@@ -296,7 +324,9 @@ def param_init_gru_cond(options, params, prefix='gru_cond', nin=None, dim=None, 
 
     return params
 
-def param_init_gru_nonlin(options, params, prefix='gru', nin=None, dim=None, hiero=False):
+
+def param_init_gru_nonlin(options, params, prefix='gru',
+                          nin=None, dim=None, hiero=False):
     if nin is None:
         nin = options['dim_proj']
     if dim is None:
@@ -328,7 +358,11 @@ def param_init_gru_nonlin(options, params, prefix='gru', nin=None, dim=None, hie
     
     return params
 
-def gru_cond_layer(tparams, state_below, options, prefix='gru', mask=None, context=None, one_step=False, init_memory=None, init_state=None, context_mask=None, **kwargs):
+
+def gru_cond_layer(tparams, state_below, options, prefix='gru',
+                   mask=None, context=None, one_step=False,
+                   init_memory=None, init_state=None,
+                   context_mask=None, **kwargs):
 
     assert context, 'Context must be provided'
 
@@ -489,13 +523,9 @@ def gru_cond_layer_FR(tparams, state_below, options, prefix='gru', mask=None, co
                         W_logit, b_logit):
         # compute word logits
         logit_lstm = linear(tensor.dot(h2, W_ff_logit_lstm) + b_ff_logit_lstm)
-        #logit_lstm = ff1(tparams, h2, options, prefix='ff_logit_lstm', activ='linear')
         logit_prev = linear(tensor.dot(x_, W_ff_nb_logit_prev))
-        #logit_prev = ff_nb1(tparams, x_, options, prefix='ff_nb_logit_prev', activ='linear')
         logit_ctx = linear(tensor.dot(ctx_, W_ff_nb_logit_ctx))
-        #logit_ctx = ff_nb2(tparams, ctx_, options, prefix='ff_nb_logit_ctx', activ='linear')
         logit = tensor.tanh(logit_lstm + logit_prev + logit_ctx)
-        #logit = ff2(tparams, logit, options, prefix='ff_logit', activ='linear')
         logit = linear(tensor.dot(logit, W_logit) + b_logit)    # n_samples x vocab_size
         nw = tensor.argmax(logit, 1)
         return nw
@@ -507,7 +537,7 @@ def gru_cond_layer_FR(tparams, state_below, options, prefix='gru', mask=None, co
         pctx__ = pctx_ + pstate_                    # x_len x batch_size x 2 dim
         pctx__ = tensor.tanh(pctx__)
         alpha = tensor.dot(pctx__, U_att) + c_tt    # x_len x batch_size x 1
-        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])     # (8) # x_len x batch_size
+        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])  # (8) # x_len x batch_size
         alpha = tensor.exp(alpha)
         if context_mask:
             alpha = alpha * context_mask
@@ -515,18 +545,14 @@ def gru_cond_layer_FR(tparams, state_below, options, prefix='gru', mask=None, co
 
         return alpha
 
-    # projected x
-    #state_belowx = tensor.dot(state_below, tparams[prefix_append(prefix, 'Wx')]) + tparams[prefix_append(prefix, 'bx')]
-    #state_below_ = tensor.dot(state_below, tparams[prefix_append(prefix, 'W')]) + tparams[prefix_append(prefix, 'b')]
-    
-
     n_timesteps_trg = 1
 
     def _step_slice(nw, h_, ctx_, alpha_, preactx2, pctx_, cc_,
-                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl,
+                    U, Wc, W_comb_att, U_att, c_tt,
+                    Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl,
                     W_ff_logit_lstm, b_ff_logit_lstm,
                     W_ff_nb_logit_prev, W_ff_nb_logit_ctx,
-                    W_logit, b_logit, 
+                    W_logit, b_logit,
                     Wxemb_proj, Wemb_proj, bxemb_proj, bemb_proj, W_embedding):
 
         state_below = W_embedding[nw].reshape([n_timesteps_trg, n_samples, options['dim_word']])
