@@ -69,9 +69,7 @@ def init_params_adversarial(tparams):
     return params_adversarial
 
 def init_params_gen_adversarial(tparams):
-    disconnected_params = ['decoder_W_comb_att', 'decoder_U_att',
-                            'decoder_c_tt', 'decoder_Wc_att',
-                            'decoder_b_att', 'Wemb',
+    disconnected_params = [ 'Wemb',
                             'Wemb_dec',
                             'encoder_W',
                             'encoder_b',
@@ -1017,7 +1015,7 @@ if __name__ == '__main__':
           optimizer='adadelta',
           batch_size=16,
           valid_batch_size=16,
-          saveto='./saved_models/fr-en/exp1_complete/model.npz',
+          saveto='./saved_models/fde-en/endtoend/model.npz',
           validFreq=10000,
           saveFreq=10000,
           sampleFreq=1000,
@@ -1025,7 +1023,7 @@ if __name__ == '__main__':
           dictionary='../data/vocab_and_data_small_europarl_v7_enfr/vocab.en.pkl',
           dictionary_src='../data/vocab_and_data_small_europarl_v7_enfr/vocab.fr.pkl',
           use_dropout=False,
-          reload_='./saved_models/fr-en/exp1_complete/epoch9_nbUpd280000_model',
+          reload_=False,
           correlation_coeff=0.1,
           clip_c=1.,
-          adversarial_mode='complete')
+          adversarial_mode='simple')

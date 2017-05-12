@@ -547,9 +547,9 @@ def gru_cond_layer_FR(tparams, state_below, options, prefix='gru', mask=None, co
         h1 = u1 * h_ + (1. - u1) * h1
         # h1 = m_[:, None] * h1 + (1. - m_)[:, None] * h_     # (2)
 
-        alpha = disconnected_grad(compute_alphas(h1, W_comb_att, pctx_, U_att, c_tt, context_mask))
+        alpha = compute_alphas(h1, W_comb_att, pctx_, U_att, c_tt, context_mask)
 
-        ctx_ = disconnected_grad((cc_ * alpha[:, :, None]).sum(0))     # (6) current context   # batch_size x 2 dim
+        ctx_ = (cc_ * alpha[:, :, None]).sum(0)     # (6) current context   # batch_size x 2 dim
 
         preact2 = tensor.dot(h1, U_nl) + b_nl       # batch_size x 2 dim
         preact2 += tensor.dot(ctx_, Wc)
