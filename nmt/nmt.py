@@ -69,9 +69,7 @@ def init_params_adversarial(tparams):
     return params_adversarial
 
 def init_params_gen_adversarial(tparams):
-    disconnected_params = ['decoder_W_comb_att', 'decoder_U_att',
-                            'decoder_c_tt', 'decoder_Wc_att',
-                            'decoder_b_att', 'Wemb',
+    disconnected_params = [ 'Wemb',
                             'Wemb_dec',
                             'encoder_W',
                             'encoder_b',
